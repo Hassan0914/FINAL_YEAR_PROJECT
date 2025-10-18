@@ -7,6 +7,9 @@ export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
 
+    // Debugging: log incoming payload (avoid logging password in real logs)
+    console.log('Login attempt for:', { email })
+
     // Validation
     if (!email || !password) {
       return NextResponse.json({ 
@@ -46,8 +49,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Case 3: Email verified, now check password
-    const isPasswordValid = await bcrypt.compare(password, user.password)
+  // Case 3: Email verified, now check password
+  // Debugging: ensure user object has expected fields
+  console.log('Found user for login:', { id: user?.id, email: user?.email, hasPassword: Boolean(user?.password) })
+  const isPasswordValid = await bcrypt.compare(password, user.password)
 
     if (!isPasswordValid) {
       return NextResponse.json({ 
