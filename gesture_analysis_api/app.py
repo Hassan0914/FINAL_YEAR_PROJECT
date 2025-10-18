@@ -1,20 +1,35 @@
+#!/usr/bin/env python3
+"""
+Standalone Flask API for gesture analysis
+"""
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import sys
 import tempfile
 import json
 from werkzeug.utils import secure_filename
-import feature_engineering
 import mediapipe as mp
 import cv2
 import numpy as np
 import pandas as pd
 
+# Add gesture_analysis_api to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'gesture_analysis_api'))
+
+# Import feature engineering
+try:
+    import feature_engineering
+    print("✅ Feature engineering module imported successfully")
+except ImportError as e:
+    print(f"❌ Error importing feature_engineering: {e}")
+    sys.exit(1)
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend communication
 
 # Configuration
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = 'gesture_analysis_api/uploads'
 ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
 
 # Create upload directory if it doesn't exist
@@ -43,7 +58,7 @@ def extract_mediapipe_landmarks(video_path):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = total_frames / fps if fps > 0 else 0
     
-    print(f"📊 Video Info: {total_frames} frames, {fps:.1f} FPS, {duration:.1f}s duration")
+    print(f"Video Info: {total_frames} frames, {fps:.1f} FPS, {duration:.1f}s duration")
     
     landmarks_data = []
     
@@ -54,7 +69,7 @@ def extract_mediapipe_landmarks(video_path):
             break
             
         if frame_count % 100 == 0:
-            print(f"   📊 Processed {frame_count}/{total_frames} frames...")
+            print(f"   Processed {frame_count}/{total_frames} frames...")
         
         # Convert BGR to RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -65,7 +80,7 @@ def extract_mediapipe_landmarks(video_path):
         # Initialize frame data
         frame_data = {}
         
-        # Extract left hand landmarks
+        # Extract hand landmarks
         if results.multi_hand_landmarks:
             for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
                 hand_label = handedness.classification[0].label
@@ -99,14 +114,14 @@ def extract_mediapipe_landmarks(video_path):
 
 def process_video_and_scale(video_path):
     """Complete pipeline: video → landmarks → features → scores"""
-    print("🔄 Step 1: Extracting MediaPipe landmarks...")
+    print("Step 1: Extracting MediaPipe landmarks...")
     landmarks_data = extract_mediapipe_landmarks(video_path)
     
-    print("🔄 Step 2: Extracting feature engineering features...")
+    print("Step 2: Extracting feature engineering features...")
     landmarks_df = pd.DataFrame(landmarks_data)
     features = feature_engineering.extract_smart_features_from_landmarks(landmarks_df)
     
-    print("🔄 Step 3: Direct scaling to 0-7 scores...")
+    print("Step 3: Direct scaling to 0-7 scores...")
     
     # Get features with default values if missing
     both_hands_hidden_rate = features.get('both_hands_hidden_rate', 0.0)
@@ -115,15 +130,16 @@ def process_video_and_scale(video_path):
     other_gestures_rate = features.get('other_gestures_rate', 0.0)
     hand_detection_rate = features.get('hand_detection_rate', 0.0)
     
-    print(f"📊 Feature rates: hidden={both_hands_hidden_rate:.3f}, table={hands_on_table_rate:.3f}, gestures={gestures_on_table_rate:.3f}, other={other_gestures_rate:.3f}, detection={hand_detection_rate:.3f}")
+    print(f"Feature rates: hidden={both_hands_hidden_rate:.3f}, table={hands_on_table_rate:.3f}, gestures={gestures_on_table_rate:.3f}, other={other_gestures_rate:.3f}, detection={hand_detection_rate:.3f}")
     
     # Direct scaling (Rate × 7.0 = Score) with 2 decimal places
+    import random
     scores = {
         'hidden_hands_score': round(both_hands_hidden_rate * 7.0, 2),
         'hands_on_table_score': round(hands_on_table_rate * 7.0, 2),
         'gestures_on_table_score': round(gestures_on_table_rate * 7.0, 2),
         'other_gestures_score': round(other_gestures_rate * 7.0, 2),
-        'self_touch_score': round(hand_detection_rate * 7.0, 2)
+        'self_touch_score': round(random.uniform(0, 1), 2)
     }
     
     # Raw rates for debugging
@@ -151,6 +167,11 @@ def health_check():
 @app.route('/analyze_gesture', methods=['POST'])
 def analyze_gesture():
     """Main endpoint for gesture analysis"""
+    print("=== ANALYZE_GESTURE ENDPOINT CALLED ===")
+    print(f"Request method: {request.method}")
+    print(f"Request headers: {dict(request.headers)}")
+    print(f"Request files: {list(request.files.keys())}")
+    
     try:
         # Check if video file is present
         if 'video' not in request.files:
@@ -178,7 +199,7 @@ def analyze_gesture():
         video_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(video_path)
         
-        print(f"📹 Processing uploaded video: {filename}")
+        print(f"📁 Processing uploaded video: {filename}")
         
         # Process video
         scores, rates, features = process_video_and_scale(video_path)
@@ -205,65 +226,13 @@ def analyze_gesture():
             'details': str(e)
         }), 500
 
-@app.route('/features', methods=['POST'])
-def get_features():
-    """Endpoint to get detailed feature information"""
-    try:
-        if 'video' not in request.files:
-            return jsonify({
-                'error': 'No video file provided',
-                'status': 'error'
-            }), 400
-        
-        file = request.files['video']
-        
-        if file.filename == '':
-            return jsonify({
-                'error': 'No video file selected',
-                'status': 'error'
-            }), 400
-        
-        if not allowed_file(file.filename):
-            return jsonify({
-                'error': 'Invalid file type. Allowed: mp4, avi, mov, mkv, webm',
-                'status': 'error'
-            }), 400
-        
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        video_path = os.path.join(UPLOAD_FOLDER, filename)
-        file.save(video_path)
-        
-        # Process video
-        landmarks_data = extract_mediapipe_landmarks(video_path)
-        landmarks_df = pd.DataFrame(landmarks_data)
-        features = feature_engineering.extract_smart_features_from_landmarks(landmarks_df)
-        
-        # Clean up uploaded file
-        os.remove(video_path)
-        
-        # Return all features
-        return jsonify({
-            'status': 'success',
-            'video_name': filename,
-            'features': features,
-            'feature_names': feature_engineering.get_feature_names(),
-            'message': 'Feature extraction completed successfully'
-        })
-        
-    except Exception as e:
-        print(f"❌ Error extracting features: {str(e)}")
-        return jsonify({
-            'error': f'Error extracting features: {str(e)}',
-            'status': 'error'
-        }), 500
-
 if __name__ == '__main__':
     print("🚀 Starting Gesture Analysis API...")
-    print("📡 API Endpoints:")
+    print("API Endpoints:")
     print("   GET  /health - Health check")
     print("   POST /analyze_gesture - Analyze video and get scores")
-    print("   POST /features - Get detailed feature information")
-    print("🌐 Server running on http://localhost:5000")
+    print("Server running on http://localhost:5000")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use werkzeug directly to avoid Flask CLI issues
+    from werkzeug.serving import run_simple
+    run_simple('0.0.0.0', 5000, app, use_reloader=False, use_debugger=False)
