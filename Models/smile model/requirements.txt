@@ -1,0 +1,23 @@
+# Smile Score Prediction - Production Requirements
+
+# Core ML
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+joblib>=1.1.0
+
+# API Server
+fastapi>=0.68.0
+uvicorn>=0.15.0
+python-multipart>=0.0.5
+
+# Video Processing
+opencv-python>=4.5.0
+
+# Authentication
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.5
+
+# Optional: SHORE SDK (install separately)
+# shore-sdk  # Install from Fraunhofer
+
