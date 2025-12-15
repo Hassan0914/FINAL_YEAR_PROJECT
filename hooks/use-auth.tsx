@@ -35,10 +35,10 @@ export function useAuth() {
   }, [])
 
   // Debug logging
-  console.log("useAuth - session:", session)
-  console.log("useAuth - status:", status)
-  console.log("useAuth - localUser:", localUser)
-  console.log("useAuth - isAuthenticated:", !!(session || localUser))
+  // console.log("useAuth - session:", session)
+  // console.log("useAuth - status:", status)
+  // console.log("useAuth - localUser:", localUser)
+  // console.log("useAuth - isAuthenticated:", !!(session || localUser))
 
   const login = async (email: string, password: string) => {
     setIsLoading(true)

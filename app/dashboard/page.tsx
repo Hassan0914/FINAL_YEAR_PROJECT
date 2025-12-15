@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const { isLoggedIn, logout } = useAuth()
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [gestureAnalysis, setGestureAnalysis] = useState(null)
+  const [facialAnalysis, setFacialAnalysis] = useState(null)
   const [voiceAnalysis, setVoiceAnalysis] = useState(null)
 
   useEffect(() => {
@@ -39,15 +40,40 @@ export default function DashboardPage() {
       router.push("/demo-dashboard")
     }
     
-    // Check for analysis results in localStorage
-    const storedResult = localStorage.getItem('gestureAnalysisResult')
+    // Check for analysis results in localStorage (new format)
+    const storedResult = localStorage.getItem('videoAnalysisResult')
     if (storedResult) {
       const result = JSON.parse(storedResult)
-      setGestureAnalysis(result)
+      
+      // Extract gesture analysis
+      if (result.gesture_analysis) {
+        setGestureAnalysis({
+          gesture_scores: result.gesture_analysis.gesture_scores || {},
+          gesture_rates: result.gesture_analysis.gesture_rates || {},
+          frame_count: result.gesture_analysis.frame_count || 0,
+          message: result.gesture_analysis.message || 'Analysis completed'
+        })
+      }
+      
+      // Extract facial analysis
+      if (result.facial_analysis) {
+        setFacialAnalysis(result.facial_analysis)
+      }
       
       // Extract voice analysis if available
       if (result.voice_scores) {
         setVoiceAnalysis(result.voice_scores)
+      }
+    } else {
+      // Fallback to old format for backward compatibility
+      const oldResult = localStorage.getItem('gestureAnalysisResult')
+      if (oldResult) {
+        const result = JSON.parse(oldResult)
+        setGestureAnalysis(result)
+        
+        if (result.voice_scores) {
+          setVoiceAnalysis(result.voice_scores)
+        }
       }
     }
   }, [isLoggedIn, router])
@@ -354,38 +380,75 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores.hidden_hands}/7
+                      {gestureAnalysis.gesture_scores?.hidden_hands?.toFixed(2) || '0.00'}/7
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Hidden Hands</div>
                     <div className="text-xs text-gray-400">Hands not visible</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores.hands_on_table}/7
+                      {gestureAnalysis.gesture_scores?.hands_on_table?.toFixed(2) || '0.00'}/7
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Hands on Table</div>
                     <div className="text-xs text-gray-400">Resting on table</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores.gestures_on_table}/7
+                      {gestureAnalysis.gesture_scores?.gestures_on_table?.toFixed(2) || '0.00'}/7
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Gestures on Table</div>
                     <div className="text-xs text-gray-400">Gesturing near table</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores.other_gestures}/7
+                      {gestureAnalysis.gesture_scores?.other_gestures?.toFixed(2) || '0.00'}/7
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Other Gestures</div>
                     <div className="text-xs text-gray-400">Expressive gestures</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores.self_touch}/7
+                      {gestureAnalysis.gesture_scores?.self_touch?.toFixed(2) || '0.00'}/7
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Self Touch</div>
                     <div className="text-xs text-gray-400">Touching face/body</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Facial Expression Analysis Results */}
+        {facialAnalysis && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            className="mb-8"
+          >
+            <Card className="bg-gray-900/50 border-gray-700/50 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-white">Facial Expression Analysis</CardTitle>
+                <CardDescription className="text-gray-400">
+                  AI-powered analysis of your facial expressions and engagement (1-7 scale)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-white mb-2">
+                      {facialAnalysis.smile_score ? facialAnalysis.smile_score.toFixed(2) : '0.00'}/7
+                    </div>
+                    <div className="text-sm text-gray-300 mb-1">Smile Score</div>
+                    <div className="text-xs text-gray-400">Engagement level</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-white mb-2">
+                      {facialAnalysis.processing_time ? facialAnalysis.processing_time.toFixed(2) : 'N/A'}s
+                    </div>
+                    <div className="text-sm text-gray-300 mb-1">Processing Time</div>
+                    <div className="text-xs text-gray-400">Analysis duration</div>
                   </div>
                 </div>
               </CardContent>

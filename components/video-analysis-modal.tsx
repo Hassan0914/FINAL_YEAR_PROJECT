@@ -22,11 +22,29 @@ interface GestureScores {
   self_touch: number
 }
 
+interface GestureAnalysis {
+  success: boolean
+  scores: GestureScores
+  frames_processed: number
+  total_predictions?: number
+  processing_time_seconds?: number
+}
+
+interface SmileAnalysis {
+  success: boolean
+  smile_score: number
+  interpretation: string
+  frames_processed: number
+  video_duration_seconds: number
+  processing_time_seconds?: number
+}
+
 interface AnalysisResult {
   success: boolean
-  gesture_scores: GestureScores
-  frame_count: number
-  message: string
+  video_name: string
+  gesture_analysis: GestureAnalysis | null
+  smile_analysis: SmileAnalysis | null
+  total_processing_time_seconds: number
 }
 
 export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalProps) {
@@ -55,7 +73,7 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const response = await fetch('/api/gesture-prediction', {
+      const response = await fetch('/api/analyze-video', {
         method: 'POST',
         body: formData,
       })
@@ -121,7 +139,7 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-gray-900 border-gray-700 text-white">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-            AI Gesture Analysis
+            AI Video Analysis
           </DialogTitle>
         </DialogHeader>
 
@@ -180,7 +198,7 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
                       ) : (
                         <>
                           <Brain className="w-4 h-4 mr-2" />
-                          Analyze Gestures
+                          Analyze Video
                         </>
                       )}
                     </Button>
@@ -229,113 +247,175 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
                     <div className="text-center">
                       <Play className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                       <p className="text-gray-300">Video Analysis Complete</p>
-                      <p className="text-sm text-gray-500">{analysisResult.frame_count} frames processed</p>
+                      <p className="text-sm text-gray-500">
+                        {analysisResult.gesture_analysis?.frames_processed || 0} frames processed
+                        {analysisResult.total_processing_time_seconds && ` • ${analysisResult.total_processing_time_seconds.toFixed(1)}s`}
+                      </p>
                     </div>
                   </div>
-                  <Badge className="bg-green-700/50 text-green-300 border-green-600">
-                    Analysis Complete
-                  </Badge>
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge className="bg-green-700/50 text-green-300 border-green-600">
+                      Analysis Complete
+                    </Badge>
+                    {analysisResult.gesture_analysis?.success && (
+                      <Badge className="bg-blue-700/50 text-blue-300 border-blue-600">
+                        Gesture Analysis ✓
+                      </Badge>
+                    )}
+                    {analysisResult.smile_analysis?.success && (
+                      <Badge className="bg-purple-700/50 text-purple-300 border-purple-600">
+                        Smile Analysis ✓
+                      </Badge>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
 
               {/* Score Overview */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-                  <ScoreGauge 
-                    title="Overall Performance" 
-                    score={getOverallScore(analysisResult.gesture_scores)} 
-                    color="gray" 
-                  />
-                </motion.div>
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                  <ScoreGauge 
-                    title="Hand Visibility" 
-                    score={Math.max(1, 8 - getGestureScore(analysisResult.gesture_scores, 'hidden_hands'))} 
-                    color="gray" 
-                  />
-                </motion.div>
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-                  <ScoreGauge 
-                    title="Gesture Usage" 
-                    score={Math.max(getGestureScore(analysisResult.gesture_scores, 'other_gestures'), getGestureScore(analysisResult.gesture_scores, 'gestures_on_table'))} 
-                    color="gray" 
-                  />
-                </motion.div>
+                {analysisResult.gesture_analysis?.success && (
+                  <>
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+                      <ScoreGauge 
+                        title="Overall Performance" 
+                        score={getOverallScore(analysisResult.gesture_analysis.scores)} 
+                        color="gray" 
+                      />
+                    </motion.div>
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+                      <ScoreGauge 
+                        title="Hand Visibility" 
+                        score={Math.max(1, 8 - getGestureScore(analysisResult.gesture_analysis.scores, 'hidden_hands'))} 
+                        color="gray" 
+                      />
+                    </motion.div>
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                      <ScoreGauge 
+                        title="Gesture Usage" 
+                        score={Math.max(getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures'), getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table'))} 
+                        color="gray" 
+                      />
+                    </motion.div>
+                  </>
+                )}
+                {analysisResult.smile_analysis?.success && (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="md:col-span-3">
+                    <Card className="bg-gray-800/50 border-gray-700/50 backdrop-blur-sm">
+                      <CardHeader>
+                        <CardTitle className="text-white flex items-center gap-2">
+                          <Brain className="w-5 h-5" />
+                          Smile & Facial Expression Analysis
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <ScoreGauge 
+                              title="Smile Score" 
+                              score={Math.round(analysisResult.smile_analysis.smile_score)} 
+                              color="gray" 
+                            />
+                            <p className="text-center text-gray-400 mt-2 text-sm">
+                              {analysisResult.smile_analysis.interpretation}
+                            </p>
+                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-gray-300 text-sm mb-1">Video Duration</p>
+                              <p className="text-white font-semibold">{analysisResult.smile_analysis.video_duration_seconds.toFixed(1)}s</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-300 text-sm mb-1">Frames Analyzed</p>
+                              <p className="text-white font-semibold">{analysisResult.smile_analysis.frames_processed}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-300 text-sm mb-1">Processing Time</p>
+                              <p className="text-white font-semibold">{analysisResult.smile_analysis.processing_time_seconds?.toFixed(1)}s</p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
               </div>
 
-              {/* Detailed Metrics */}
-              <Card className="bg-gray-800/50 border-gray-700/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Brain className="w-5 h-5" />
-                    Gesture Analysis Details
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-300">Hands on Table</span>
-                        <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'hands_on_table')}/7</span>
+              {/* Detailed Metrics - Gesture Analysis */}
+              {analysisResult.gesture_analysis?.success && (
+                <Card className="bg-gray-800/50 border-gray-700/50 backdrop-blur-sm">
+                  <CardHeader>
+                    <CardTitle className="text-white flex items-center gap-2">
+                      <Brain className="w-5 h-5" />
+                      Gesture Analysis Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-300">Hands on Table</span>
+                          <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_analysis.scores, 'hands_on_table')}/7</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <motion.div
+                            className="bg-gradient-to-r from-gray-500 to-gray-700 h-2 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'hands_on_table') / 7) * 100}%` }}
+                            transition={{ duration: 1, delay: 0.5 }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <motion.div
-                          className="bg-gradient-to-r from-gray-500 to-gray-700 h-2 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'hands_on_table') / 7) * 100}%` }}
-                          transition={{ duration: 1, delay: 0.5 }}
-                        />
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-300">Gestures on Table</span>
+                          <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table')}/7</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <motion.div
+                            className="bg-gradient-to-r from-gray-600 to-gray-800 h-2 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table') / 7) * 100}%` }}
+                            transition={{ duration: 1, delay: 0.7 }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-300">Other Gestures</span>
+                          <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures')}/7</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <motion.div
+                            className="bg-gradient-to-r from-gray-400 to-gray-600 h-2 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures') / 7) * 100}%` }}
+                            transition={{ duration: 1, delay: 0.9 }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-300">Self Touch</span>
+                          <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_analysis.scores, 'self_touch')}/7</span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <motion.div
+                            className="bg-gradient-to-r from-gray-300 to-gray-500 h-2 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'self_touch') / 7) * 100}%` }}
+                            transition={{ duration: 1, delay: 1.1 }}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-300">Gestures on Table</span>
-                        <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'gestures_on_table')}/7</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <motion.div
-                          className="bg-gradient-to-r from-gray-600 to-gray-800 h-2 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'gestures_on_table') / 7) * 100}%` }}
-                          transition={{ duration: 1, delay: 0.7 }}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-300">Other Gestures</span>
-                        <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'other_gestures')}/7</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <motion.div
-                          className="bg-gradient-to-r from-gray-400 to-gray-600 h-2 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'other_gestures') / 7) * 100}%` }}
-                          transition={{ duration: 1, delay: 0.9 }}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-300">Self Touch</span>
-                        <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'self_touch')}/7</span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <motion.div
-                          className="bg-gradient-to-r from-gray-300 to-gray-500 h-2 rounded-full"
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'self_touch') / 7) * 100}%` }}
-                          transition={{ duration: 1, delay: 1.1 }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* AI Insights */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {getInsights(analysisResult.gesture_scores).map((insight, index) => (
+              {analysisResult.gesture_analysis?.success && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {getInsights(analysisResult.gesture_analysis.scores).map((insight, index) => (
                   <motion.div
                     key={insight.category}
                     initial={{ opacity: 0, x: index === 0 ? -20 : 20 }}
@@ -365,8 +445,9 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
                       </CardContent>
                     </Card>
                   </motion.div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 

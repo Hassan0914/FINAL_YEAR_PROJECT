@@ -145,9 +145,9 @@ export default function UploadPage() {
 
       startProgressSimulation()
 
-      console.log("Calling gesture prediction API...")
-      // Call the gesture prediction API
-      const response = await fetch('/api/gesture-prediction', {
+      console.log("Calling unified video analysis API...")
+      // Call the unified video analysis API (gesture + smile)
+      const response = await fetch('/api/analyze-video', {
         method: 'POST',
         body: formData,
       })
@@ -166,7 +166,14 @@ export default function UploadPage() {
       setUploadProgress(100)
       
       // Store the analysis result in localStorage for the dashboard
-      localStorage.setItem('gestureAnalysisResult', JSON.stringify(result.data))
+      if (result.data) {
+        localStorage.setItem('videoAnalysisResult', JSON.stringify(result.data))
+        console.log("Analysis complete, stored results:", result.data)
+      } else {
+        console.error("No data in API response:", result)
+        throw new Error('No analysis data received')
+      }
+      
       console.log("Analysis complete, redirecting to dashboard")
       
       setUploadStatus("complete")
@@ -198,7 +205,7 @@ export default function UploadPage() {
       case "uploading":
         return "Uploading your video..."
       case "processing":
-        return "AI is analyzing your interview gestures... This may take 3-5 minutes for MediaPipe processing"
+        return "AI is analyzing your interview gestures and facial expressions... This may take 3-5 minutes for MediaPipe processing"
       case "complete":
         return "Analysis complete! Redirecting to results..."
       case "error":
@@ -411,7 +418,7 @@ export default function UploadPage() {
                         onClick={startAnalysis}
                         className="flex-1 bg-gradient-to-r from-green-600 to-green-800 hover:from-green-500 hover:to-green-700"
                       >
-                        Analyze Gestures
+                        Analyze Gestures & Facial Expressions
                       </Button>
                       <Button
                         variant="outline"
