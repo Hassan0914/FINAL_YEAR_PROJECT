@@ -17,6 +17,7 @@ import {
   Download,
   Upload,
   LogOut,
+  History,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -176,6 +177,15 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex gap-3">
+            <Link href="/history">
+              <Button
+                variant="outline"
+                className="border-gray-600 text-white hover:bg-gray-800/50 bg-transparent"
+              >
+                <History className="w-4 h-4 mr-2" />
+                History
+              </Button>
+            </Link>
             <Button
               onClick={handleUploadClick}
               className="bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800 border border-gray-600 hover:scale-105 transition-all duration-300"

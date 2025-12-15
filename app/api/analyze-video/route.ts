@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/db'
 
 const UNIFIED_API_URL = process.env.UNIFIED_API_URL || 'http://localhost:8000'
 
@@ -68,21 +71,74 @@ export async function POST(request: NextRequest) {
     // Transform Unified API response to match frontend format
     const transformedResult = {
       video_name: result.video_name || file.name,
+      // Keep field names aligned for both dashboard and modal
       gesture_analysis: result.gesture_analysis?.success ? {
         success: true,
+        // For dashboard
         gesture_scores: result.gesture_analysis.scores || {},
-        gesture_rates: {}, // Unified API doesn't provide rates, but we can calculate if needed
+        gesture_rates: {}, // Unified API doesn't provide rates
         frame_count: result.gesture_analysis.frames_processed || 0,
-        message: 'Gesture analysis completed successfully'
+        message: 'Gesture analysis completed successfully',
+        // For modal backward-compat
+        scores: result.gesture_analysis.scores || {},
+        frames_processed: result.gesture_analysis.frames_processed || 0,
+        total_predictions: result.gesture_analysis.total_predictions || 0,
       } : null,
+      // Facial/smile analysis (alias both keys)
       facial_analysis: result.smile_analysis?.success ? {
         success: true,
         smile_score: result.smile_analysis.smile_score || 0,
         processing_time: result.total_processing_time_seconds || 0,
         video_name: result.smile_analysis.video_name || file.name,
         interpretation: result.smile_analysis.interpretation || 'Unknown',
-        frames_processed: result.smile_analysis.frames_processed || 0
-      } : null
+        frames_processed: result.smile_analysis.frames_processed || 0,
+        video_duration_seconds: result.smile_analysis.video_duration_seconds || 0,
+      } : null,
+      smile_analysis: result.smile_analysis?.success ? {
+        success: true,
+        smile_score: result.smile_analysis.smile_score || 0,
+        interpretation: result.smile_analysis.interpretation || 'Unknown',
+        frames_processed: result.smile_analysis.frames_processed || 0,
+        video_duration_seconds: result.smile_analysis.video_duration_seconds || 0,
+        processing_time_seconds: result.total_processing_time_seconds || 0,
+      } : null,
+      total_processing_time_seconds: result.total_processing_time_seconds || 0,
+    }
+    
+    // Save analysis results to database if user is authenticated
+    try {
+      const session = await getServerSession(authOptions)
+      if (session?.user?.id) {
+        const gestureScores = transformedResult.gesture_analysis?.gesture_scores || {}
+        
+        await prisma.analysisHistory.create({
+          data: {
+            userId: session.user.id,
+            videoName: result.video_name || file.name,
+            videoFileName: file.name,
+            // Gesture Analysis Scores
+            handsOnTable: gestureScores.hands_on_table || null,
+            hiddenHands: gestureScores.hidden_hands || null,
+            gestureOnTable: gestureScores.gestures_on_table || null,
+            selfTouch: gestureScores.self_touch || null,
+            otherGestures: gestureScores.other_gestures || null,
+            // Facial Analysis Score
+            smileScore: transformedResult.facial_analysis?.smile_score || null,
+            // Processing Metadata
+            gestureFrames: transformedResult.gesture_analysis?.frame_count || null,
+            facialFrames: transformedResult.facial_analysis?.frames_processed || null,
+            processingTime: result.total_processing_time_seconds || null,
+            gestureSuccess: transformedResult.gesture_analysis?.success || false,
+            facialSuccess: transformedResult.facial_analysis?.success || false,
+          }
+        })
+        console.log('Analysis results saved to database for user:', session.user.id)
+      } else {
+        console.log('User not authenticated, skipping database save')
+      }
+    } catch (dbError) {
+      console.error('Error saving analysis to database:', dbError)
+      // Don't fail the request if database save fails
     }
     
     return NextResponse.json({

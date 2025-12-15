@@ -95,17 +95,11 @@ def load_smile_model():
         # Save current working directory
         original_cwd = os.getcwd()
         
-        # Check model file exists first
-        model_path = os.path.join(SMILE_MODEL_DIR, "smile_model.joblib")
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Smile model not found: {model_path}")
-        
-        # Get absolute paths
         abs_smile_dir = os.path.abspath(SMILE_MODEL_DIR)
         model_path = os.path.join(abs_smile_dir, "smile_model.joblib")
         
-        logger.info(f"Smile model directory: {abs_smile_dir}")
-        logger.info(f"Smile model file: {model_path}")
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Smile model not found: {model_path}")
         
         # Change to smile model directory for proper path resolution
         # This ensures os.path.dirname(__file__) in video_smile_pipeline.py resolves correctly
@@ -116,87 +110,15 @@ def load_smile_model():
             sys.path.insert(0, abs_smile_dir)
         
         # Import smile pipeline with numpy compatibility handling
-        # The model was saved with numpy 2.x, but we may be running numpy 1.x
-        # We'll import and handle any numpy version issues
         try:
             from video_smile_pipeline import process_uploaded_video
         except (ModuleNotFoundError, ImportError) as e:
             if 'numpy._core' in str(e) or 'numpy.core' in str(e):
                 # Model was saved with numpy 2.x but we have numpy 1.x
-                # We can't load it directly, need to use the venv from smile model directory
-                logger.error("Model requires numpy 2.x but current environment has numpy 1.x")
-                logger.error("Please re-save the model with numpy 1.x, or use the venv from Models/smile model/")
                 raise ImportError(
                     "NumPy version mismatch: Model was saved with NumPy 2.x but current environment has NumPy 1.x. "
                     "The model needs to be re-saved with NumPy 1.x, or you need to use NumPy 2.x (which conflicts with TensorFlow/MediaPipe)."
                 ) from e
-                
-                def process_uploaded_video_wrapper(video_path, sample_rate=3):
-                    """Wrapper that uses pre-loaded model components"""
-                    import cv2
-                    import numpy as np
-                    
-                    # Open video
-                    cap = cv2.VideoCapture(video_path)
-                    if not cap.isOpened():
-                        raise ValueError(f"Cannot open video file: {video_path}")
-                    
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    duration = total_frames / fps if fps > 0 else 0
-                    
-                    # Extract features
-                    extractor = SHOREFeatureExtractor()
-                    frame_features = []
-                    frame_count = 0
-                    
-                    while True:
-                        ret, frame = cap.read()
-                        if not ret:
-                            break
-                        
-                        if frame_count % sample_rate == 0:
-                            features = extractor.extract_from_frame(frame)
-                            frame_features.append(features)
-                        
-                        frame_count += 1
-                    
-                    cap.release()
-                    frame_features = np.array(frame_features)
-                    
-                    if len(frame_features) < 10:
-                        raise ValueError("Video too short or no faces detected")
-                    
-                    # Calculate statistics
-                    stats = calculate_statistics(frame_features)
-                    
-                    # Predict
-                    X = np.array([[stats.get(col, 0) for col in feature_cols]])
-                    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-                    X_scaled = scaler.transform(X)
-                    smile_score = float(model.predict(X_scaled)[0])
-                    
-                    # Generate interpretation
-                    if smile_score >= 6.0:
-                        interpretation = "Very High - Excellent positive engagement"
-                    elif smile_score >= 5.0:
-                        interpretation = "High - Good positive expressions"
-                    elif smile_score >= 4.0:
-                        interpretation = "Moderate - Average engagement"
-                    elif smile_score >= 3.0:
-                        interpretation = "Low - Limited positive expressions"
-                    else:
-                        interpretation = "Very Low - Minimal smiling"
-                    
-                    return {
-                        'smile_score': round(smile_score, 4),
-                        'frames_processed': len(frame_features),
-                        'video_duration_seconds': round(duration, 2),
-                        'interpretation': interpretation
-                    }
-                
-                process_uploaded_video = process_uploaded_video_wrapper
-                logger.info("✅ Smile model loaded with compatibility wrapper")
             else:
                 raise
         
@@ -551,6 +473,14 @@ async def analyze_all(file: UploadFile = File(...)):
     start_time = datetime.now()
     
     try:
+        # Ensure models are loaded (lazy-load in case startup failed)
+        if not gesture_predictor:
+            logger.info("Gesture model not loaded yet. Attempting to load...")
+            load_gesture_model()
+        if not smile_predictor:
+            logger.info("Smile model not loaded yet. Attempting to load...")
+            load_smile_model()
+
         # Save uploaded file
         logger.info(f"Received combined analysis request: {file.filename}")
         temp_file_path = save_uploaded_file(file)

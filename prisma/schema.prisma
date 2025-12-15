@@ -8,15 +8,48 @@ datasource db {
 }
 
 model User {
-  id               String    @id @default(cuid())
-  email            String    @unique
+  id               String            @id @default(cuid())
+  email            String            @unique
   password         String
   name             String?
-  isVerified       Boolean   @default(false)
+  isVerified       Boolean           @default(false)
   verificationCode String?
   codeExpiresAt    DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  analyses         AnalysisHistory[]
 
   @@map("users")
+}
+
+model AnalysisHistory {
+  id                String   @id @default(cuid())
+  userId            String
+  videoName         String
+  videoFileName     String
+  
+  // Gesture Analysis Scores (1-7 scale)
+  handsOnTable      Float?
+  hiddenHands       Float?
+  gestureOnTable    Float?
+  selfTouch         Float?
+  otherGestures     Float?
+  
+  // Facial Analysis Score (1-7 scale)
+  smileScore        Float?
+  
+  // Processing Metadata
+  gestureFrames     Int?
+  facialFrames      Int?
+  processingTime    Float?
+  gestureSuccess    Boolean  @default(false)
+  facialSuccess     Boolean  @default(false)
+  
+  createdAt         DateTime @default(now())
+  
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([createdAt])
+  @@map("analysis_history")
 }
