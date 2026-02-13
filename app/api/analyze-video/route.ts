@@ -5,55 +5,99 @@ import { prisma } from '@/lib/db'
 
 const UNIFIED_API_URL = process.env.UNIFIED_API_URL || 'http://localhost:8000'
 
-// Set maximum duration for this route (in seconds)
-// 3600 seconds = 1 hour (Next.js max is 300s for Hobby plan, but we'll set it high for self-hosted)
-export const maxDuration = 3600 // 1 hour
-export const dynamic = 'force-dynamic'
+// CRITICAL: Configuration for long video processing
+// These settings are essential for videos longer than 5 minutes
+export const maxDuration = 3600 // 1 hour - allows processing of long videos
+export const dynamic = 'force-dynamic' // Disable caching
+
+// Disable body size limit for this route (handled by Next.js config)
+// This allows large video files to be uploaded
+export const runtime = 'nodejs' // Use Node.js runtime for better performance
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now()
+  
   try {
+    console.log('[Analyze Video] =========================================')
+    console.log('[Analyze Video] New video analysis request received')
+    console.log('[Analyze Video] Timestamp:', new Date().toISOString())
+    
+    // Validate authentication BEFORE starting video processing
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      console.log('[Analyze Video] ❌ Unauthorized: No valid session found')
+      return NextResponse.json(
+        { error: 'Authentication required. Please sign in again.' },
+        { status: 401 }
+      )
+    }
+    console.log('[Analyze Video] ✅ Session validated for user:', session.user.id)
+
     const formData = await request.formData()
     const file = formData.get('file') as File
     
     if (!file) {
+      console.log('[Analyze Video] ❌ No file provided')
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
       )
     }
 
+    // Log file details
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2)
+    console.log('[Analyze Video] 📁 File details:')
+    console.log('[Analyze Video]    Name:', file.name)
+    console.log('[Analyze Video]    Size:', fileSizeMB, 'MB')
+    console.log('[Analyze Video]    Type:', file.type)
+
     // Validate file type
     if (!file.type.startsWith('video/')) {
+      console.log('[Analyze Video] ❌ Invalid file type:', file.type)
       return NextResponse.json(
         { error: 'File must be a video' },
         { status: 400 }
       )
     }
 
+    // Warn for very large files
+    if (file.size > 500 * 1024 * 1024) { // > 500MB
+      console.log('[Analyze Video] ⚠️  Warning: Large file detected (>500MB). Processing may take longer.')
+    }
+
     // Create FormData for Unified API
     const unifiedFormData = new FormData()
     unifiedFormData.append('file', file)
 
-    // Call Unified API - No timeout, let it run as long as needed
-    console.log(`Calling Unified API: ${UNIFIED_API_URL}/api/analyze-all`)
-    console.log('No timeout set - analysis can take as long as needed')
+    // Call Unified API with detailed logging
+    console.log('[Analyze Video] 🚀 Calling Unified API:', `${UNIFIED_API_URL}/api/analyze-all`)
+    console.log('[Analyze Video] ⏱️  No timeout - allowing unlimited processing time for long videos')
+    console.log('[Analyze Video] 📤 Sending request to Python backend...')
     
+    const fetchStartTime = Date.now()
     const response = await fetch(`${UNIFIED_API_URL}/api/analyze-all`, {
       method: 'POST',
       body: unifiedFormData,
-      // Removed signal/AbortController to allow unlimited time
+      // No timeout - allow processing to complete regardless of duration
+      // This is critical for videos > 5 minutes
     })
     
-    console.log(`Unified API response status: ${response.status}`)
+    const fetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(2)
+    console.log('[Analyze Video] 📥 Received response from Unified API')
+    console.log('[Analyze Video]    Status:', response.status)
+    console.log('[Analyze Video]    Duration:', fetchDuration, 'seconds')
 
     if (!response.ok) {
+      console.log('[Analyze Video] ❌ Unified API returned error status:', response.status)
       let errorMessage = 'Failed to process video'
       try {
         const errorData = await response.json()
         errorMessage = errorData.detail || errorData.error || errorMessage
+        console.log('[Analyze Video] Error details:', errorData)
       } catch (e) {
         const errorText = await response.text()
         errorMessage = errorText || errorMessage
+        console.log('[Analyze Video] Error text:', errorText)
       }
       return NextResponse.json(
         { error: errorMessage },
@@ -63,10 +107,11 @@ export async function POST(request: NextRequest) {
 
     const result = await response.json()
     
-    console.log('=== UNIFIED ANALYSIS RESULTS ===')
-    console.log('Gesture Analysis:', result.gesture_analysis)
-    console.log('Smile Analysis:', result.smile_analysis)
-    console.log('===================================')
+    console.log('[Analyze Video] ✅ Analysis completed successfully')
+    console.log('[Analyze Video] 📊 Results summary:')
+    console.log('[Analyze Video]    Gesture Analysis:', result.gesture_analysis?.success ? '✅ Success' : '❌ Failed')
+    console.log('[Analyze Video]    Smile Analysis:', result.smile_analysis?.success ? '✅ Success' : '❌ Failed')
+    console.log('[Analyze Video]    Processing Time:', result.total_processing_time_seconds, 'seconds')
     
     // Transform Unified API response to match frontend format
     const transformedResult = {
@@ -105,13 +150,11 @@ export async function POST(request: NextRequest) {
       total_processing_time_seconds: result.total_processing_time_seconds || 0,
     }
     
-    // Save analysis results to database if user is authenticated
+    // Save analysis results to database (session already validated at start)
     try {
-      const session = await getServerSession(authOptions)
-      if (session?.user?.id) {
-        const gestureScores = transformedResult.gesture_analysis?.gesture_scores || {}
-        
-        await prisma.analysisHistory.create({
+      const gestureScores = transformedResult.gesture_analysis?.gesture_scores || {}
+      
+      await prisma.analysisHistory.create({
           data: {
             userId: session.user.id,
             videoName: result.video_name || file.name,
@@ -132,14 +175,15 @@ export async function POST(request: NextRequest) {
             facialSuccess: transformedResult.facial_analysis?.success || false,
           }
         })
-        console.log('Analysis results saved to database for user:', session.user.id)
-      } else {
-        console.log('User not authenticated, skipping database save')
-      }
+      console.log('Analysis results saved to database for user:', session.user.id)
     } catch (dbError) {
-      console.error('Error saving analysis to database:', dbError)
+      console.error('[Analyze Video] ⚠️  Database save error:', dbError)
       // Don't fail the request if database save fails
     }
+    
+    const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.log('[Analyze Video] 🎉 Complete! Total request duration:', totalDuration, 'seconds')
+    console.log('[Analyze Video] =========================================')
     
     return NextResponse.json({
       success: true,
@@ -147,17 +191,32 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in unified video analysis API:', error)
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2)
+    console.error('[Analyze Video] ❌ FATAL ERROR after', duration, 'seconds')
+    console.error('[Analyze Video] Error details:', error)
     
     if (error instanceof Error) {
+      console.error('[Analyze Video] Error message:', error.message)
+      console.error('[Analyze Video] Error stack:', error.stack)
+      
       if (error.message.includes('ECONNREFUSED') || error.message.includes('fetch failed')) {
+        console.error('[Analyze Video] ❌ Python backend not reachable')
         return NextResponse.json(
           { error: 'Unified API server is not running. Please start the unified API server on port 8000.' },
           { status: 503 }
         )
       }
+      
+      if (error.message.includes('timeout') || error.message.includes('ETIMEDOUT')) {
+        console.error('[Analyze Video] ❌ Request timeout')
+        return NextResponse.json(
+          { error: 'Video processing timeout. The video may be too long or complex. Please try a shorter video.' },
+          { status: 504 }
+        )
+      }
     }
     
+    console.log('[Analyze Video] =========================================')
     return NextResponse.json(
       { error: `Internal server error: ${error instanceof Error ? error.message : 'Unknown error'}` },
       { status: 500 }

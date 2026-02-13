@@ -61,40 +61,61 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
         }
       } else {
         // Handle signup
-        const response = await fetch("/api/auth/signup", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            password: formData.password,
-            name: formData.name,
-          }),
-        })
+        try {
+          console.log('[Auth] Attempting signup for:', formData.email)
+          const response = await fetch("/api/auth/signup", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: formData.email,
+              password: formData.password,
+              name: formData.name,
+            }),
+          })
 
-        const data = await response.json()
+          console.log('[Auth] Signup response status:', response.status)
 
-        if (!response.ok) {
-          setErrorMessage(data.message || data.error)
-          setErrorType(data.errorType || "signup_error")
-          return
+          let data
+          try {
+            data = await response.json()
+            console.log('[Auth] Signup response data:', data)
+          } catch (jsonError) {
+            console.error('[Auth] Failed to parse signup response:', jsonError)
+            setErrorMessage("Server error: Invalid response format. Please check the server logs.")
+            setErrorType("server_error")
+            return
+          }
+
+          if (!response.ok) {
+            console.error('[Auth] Signup failed:', data)
+            setErrorMessage(data.message || data.error || "Signup failed. Please try again.")
+            setErrorType(data.errorType || "signup_error")
+            return
+          }
+
+          console.log('[Auth] Signup successful!')
+          // Store email for verification and redirect to verification page
+          localStorage.setItem('signupEmail', formData.email)
+          if (data.devCode) {
+            localStorage.setItem('devVerificationCode', data.devCode)
+          }
+          setErrorMessage(data.message || "Account created! Please check your email for the 6-digit verification code.")
+          setErrorType("signup_success")
+          setTimeout(() => {
+            onOpenChange(false)
+            router.push('/auth/verify')
+          }, 2000)
+        } catch (signupError: any) {
+          console.error('[Auth] Signup network error:', signupError)
+          setErrorMessage(`Network error: ${signupError.message || 'Unable to reach the server. Please check your connection.'} Also check the browser console and server logs for details.`)
+          setErrorType("network_error")
         }
-
-        // Store email for verification and redirect to verification page
-        localStorage.setItem('signupEmail', formData.email)
-        if (data.devCode) {
-          localStorage.setItem('devVerificationCode', data.devCode)
-        }
-        setErrorMessage(data.message || "Account created! Please check your email for the 6-digit verification code.")
-        setErrorType("signup_success")
-        setTimeout(() => {
-          onOpenChange(false)
-          router.push('/auth/verify')
-        }, 2000)
       }
     } catch (error: any) {
-      setErrorMessage("Network error. Please check your connection and try again.")
+      console.error('[Auth] Form submission error:', error)
+      setErrorMessage(`Error: ${error.message || 'Network error. Please check your connection and try again.'} Check console for details.`)
       setErrorType("network_error")
     } finally {
       setIsLoading(false)

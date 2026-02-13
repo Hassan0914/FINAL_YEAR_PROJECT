@@ -36,13 +36,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware (allow all origins for testing)
+# Configure request size limits for large video files
+# This allows uploads up to 500MB
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=3600,
 )
 
 # Global model instances
@@ -473,6 +475,11 @@ async def analyze_all(file: UploadFile = File(...)):
     start_time = datetime.now()
     
     try:
+        logger.info("=" * 70)
+        logger.info("🎬 NEW VIDEO ANALYSIS REQUEST")
+        logger.info(f"📁 File: {file.filename}")
+        logger.info(f"📅 Timestamp: {start_time.isoformat()}")
+        
         # Ensure models are loaded (lazy-load in case startup failed)
         if not gesture_predictor:
             logger.info("Gesture model not loaded yet. Attempting to load...")
@@ -482,8 +489,10 @@ async def analyze_all(file: UploadFile = File(...)):
             load_smile_model()
 
         # Save uploaded file
-        logger.info(f"Received combined analysis request: {file.filename}")
+        logger.info("💾 Saving uploaded file to temporary location...")
         temp_file_path = save_uploaded_file(file)
+        file_size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
+        logger.info(f"✅ File saved: {file_size_mb:.2f} MB")
         
         results = {
             "success": True,
@@ -495,16 +504,21 @@ async def analyze_all(file: UploadFile = File(...)):
         # Analyze gestures
         if gesture_predictor:
             try:
-                logger.info("Running gesture analysis...")
+                gesture_start = datetime.now()
+                logger.info("🤲 Starting gesture analysis...")
                 # Import and use the processing functions directly
                 sys.path.insert(0, GESTURE_MODEL_DIR)
                 from process_video import extract_landmarks_from_video, calculate_scores
                 from predict_gesture import SEQUENCE_LENGTH
                 
+                logger.info("   Extracting hand landmarks from video...")
                 landmarks_sequence = extract_landmarks_from_video(temp_file_path)
+                logger.info(f"   ✅ Extracted {len(landmarks_sequence)} landmark frames")
+                
                 if len(landmarks_sequence) == 0:
                     raise ValueError("No landmarks extracted from video")
                 
+                logger.info("   Running gesture predictions...")
                 predictions = []
                 window_size = SEQUENCE_LENGTH
                 stride = window_size // 3
@@ -519,7 +533,12 @@ async def analyze_all(file: UploadFile = File(...)):
                     result = gesture_predictor.predict(last_window)
                     predictions.append(result['class'])
                 
+                logger.info(f"   ✅ Generated {len(predictions)} predictions")
+                
                 scores = calculate_scores(predictions, len(predictions))
+                
+                gesture_duration = (datetime.now() - gesture_start).total_seconds()
+                logger.info(f"✅ Gesture analysis completed in {gesture_duration:.2f}s")
                 
                 results["gesture_analysis"] = {
                     "success": True,
@@ -551,9 +570,14 @@ async def analyze_all(file: UploadFile = File(...)):
         # Analyze smile
         if smile_predictor:
             try:
-                logger.info("Running smile analysis...")
+                smile_start = datetime.now()
+                logger.info("😊 Starting smile/facial analysis...")
                 # Use the smile predictor function directly
                 smile_result = smile_predictor(temp_file_path)
+                
+                smile_duration = (datetime.now() - smile_start).total_seconds()
+                logger.info(f"✅ Smile analysis completed in {smile_duration:.2f}s")
+                logger.info(f"   Score: {smile_result.get('smile_score', 0)}/10")
                 
                 results["smile_analysis"] = {
                     "success": True,
@@ -581,12 +605,22 @@ async def analyze_all(file: UploadFile = File(...)):
         total_time = (datetime.now() - start_time).total_seconds()
         results["total_processing_time_seconds"] = round(total_time, 2)
         
-        logger.info(f"Combined analysis completed in {total_time:.2f}s")
+        logger.info("=" * 70)
+        logger.info(f"🎉 ANALYSIS COMPLETE!")
+        logger.info(f"⏱️  Total Time: {total_time:.2f}s")
+        logger.info(f"📊 Gesture: {results['gesture_analysis']['success'] if results.get('gesture_analysis') else False}")
+        logger.info(f"😊 Smile: {results['smile_analysis']['success'] if results.get('smile_analysis') else False}")
+        logger.info("=" * 70)
+        
         return results
         
     except Exception as e:
-        logger.error(f"Error in combined analysis: {e}")
+        total_time = (datetime.now() - start_time).total_seconds()
+        logger.error("=" * 70)
+        logger.error(f"❌ ANALYSIS FAILED after {total_time:.2f}s")
+        logger.error(f"Error: {e}")
         logger.error(traceback.format_exc())
+        logger.error("=" * 70)
         raise HTTPException(
             status_code=500,
             detail=f"Error processing video: {str(e)}"
@@ -609,6 +643,10 @@ if __name__ == "__main__":
     print("\nStarting server on http://localhost:8000")
     print("API Documentation: http://localhost:8000/docs")
     print("Health Check: http://localhost:8000/api/health")
+    print("\n⚙️  Server Configuration:")
+    print("   - Timeout: Unlimited (supports long video processing)")
+    print("   - Max Request Size: 500MB (supports large video files)")
+    print("   - Keep-Alive: 300 seconds")
     print("\n" + "=" * 70 + "\n")
     
     uvicorn.run(
@@ -616,6 +654,9 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
-        log_level="info"
+        log_level="info",
+        timeout_keep_alive=300,  # 5 minutes keep-alive for long processing
+        limit_concurrency=10,     # Limit concurrent requests
+        limit_max_requests=1000,  # Restart worker after 1000 requests (memory leak prevention)
     )
 

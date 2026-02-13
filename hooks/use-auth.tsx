@@ -40,7 +40,7 @@ export function useAuth() {
   // console.log("useAuth - localUser:", localUser)
   // console.log("useAuth - isAuthenticated:", !!(session || localUser))
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, callbackUrl?: string) => {
     setIsLoading(true)
     try {
       const result = await signIn("credentials", {
@@ -53,7 +53,12 @@ export function useAuth() {
         throw new Error(result.error)
       }
 
-      return { success: true }
+      if (result?.ok) {
+        console.log('[useAuth] Login successful, session created')
+        return { success: true, callbackUrl }
+      }
+
+      throw new Error("Login failed")
     } catch (error: any) {
       return {
         success: false,

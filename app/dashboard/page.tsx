@@ -299,13 +299,13 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="text-3xl font-bold text-white mb-1">
                   {gestureAnalysis ? 
-                    Math.max(gestureAnalysis.gesture_scores.other_gestures, gestureAnalysis.gesture_scores.gestures_on_table) + '/7' : 
+                    gestureAnalysis.gesture_scores.gestures_on_table + '/7' : 
                     '91%'
                   }
                 </div>
                 <div className="flex items-center text-sm text-gray-400">
                   <TrendingUp className="w-4 h-4 mr-1" />
-                  {gestureAnalysis ? 'Expressive gestures' : 'Excellent clarity'}
+                  {gestureAnalysis ? 'Gesture on table' : 'Excellent clarity'}
                 </div>
               </CardContent>
             </Card>
@@ -387,7 +387,7 @@ export default function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">
                       {gestureAnalysis.gesture_scores?.hidden_hands?.toFixed(2) || '0.00'}/7
@@ -408,13 +408,6 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-sm text-gray-300 mb-1">Gestures on Table</div>
                     <div className="text-xs text-gray-400">Gesturing near table</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-white mb-2">
-                      {gestureAnalysis.gesture_scores?.other_gestures?.toFixed(2) || '0.00'}/7
-                    </div>
-                    <div className="text-sm text-gray-300 mb-1">Other Gestures</div>
-                    <div className="text-xs text-gray-400">Expressive gestures</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white mb-2">

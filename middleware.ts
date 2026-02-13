@@ -8,16 +8,25 @@ export default withAuth(
     const isAuth = !!token
 
     // If user is not authenticated and trying to access protected routes
-    if (!isAuth && req.nextUrl.pathname.startsWith('/dashboard')) {
-      return NextResponse.redirect(new URL('/auth/login', req.url))
-    }
-
-    if (!isAuth && req.nextUrl.pathname.startsWith('/analysis')) {
-      return NextResponse.redirect(new URL('/auth/login', req.url))
+    const protectedRoutes = ['/dashboard', '/analysis', '/upload', '/history']
+    const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route))
+    
+    if (!isAuth && isProtectedRoute) {
+      const loginUrl = new URL('/auth/login', req.url)
+      loginUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
+      return NextResponse.redirect(loginUrl)
     }
 
     // If user is authenticated and trying to access auth pages, redirect to dashboard
+    // UNLESS there's a callbackUrl (during login process)
     if (isAuth && (req.nextUrl.pathname.startsWith('/auth/login') || req.nextUrl.pathname.startsWith('/auth/signup'))) {
+      const callbackUrl = req.nextUrl.searchParams.get('callbackUrl')
+      
+      // If there's a callbackUrl, redirect there instead of dashboard
+      if (callbackUrl) {
+        return NextResponse.redirect(new URL(callbackUrl, req.url))
+      }
+      
       return NextResponse.redirect(new URL('/dashboard', req.url))
     }
   },
@@ -32,7 +41,8 @@ export default withAuth(
         }
         
         // Require authentication for protected routes
-        if (pathname.startsWith('/dashboard') || pathname.startsWith('/analysis')) {
+        const protectedRoutes = ['/dashboard', '/analysis', '/upload', '/history']
+        if (protectedRoutes.some(route => pathname.startsWith(route))) {
           return !!token
         }
         
@@ -46,6 +56,8 @@ export const config = {
   matcher: [
     "/dashboard/:path*",
     "/analysis/:path*",
+    "/upload/:path*",
+    "/history/:path*",
     "/auth/login",
     "/auth/signup"
   ],

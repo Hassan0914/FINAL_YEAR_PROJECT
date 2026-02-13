@@ -5,15 +5,29 @@ const smtpHost = process.env.EMAIL_HOST || 'smtp.gmail.com'
 const smtpPort = Number(process.env.EMAIL_PORT || 587)
 const smtpSecure = String(process.env.EMAIL_SECURE || 'false').toLowerCase() === 'true'
 
-const transporter = nodemailer.createTransport({
-  host: smtpHost,
-  port: smtpPort,
-  secure: smtpSecure,
-  auth: process.env.EMAIL_USER && process.env.EMAIL_PASS ? {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  } : undefined,
-})
+console.log('[Email Config] Host:', smtpHost, 'Port:', smtpPort, 'Secure:', smtpSecure)
+
+let transporter: any = null
+
+// Initialize transporter with error handling
+try {
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    })
+    console.log('[Email] SMTP transporter initialized with credentials')
+  } else {
+    console.log('[Email] Development mode - No email credentials configured')
+  }
+} catch (error) {
+  console.error('[Email] Failed to initialize transporter:', error)
+}
 
 export async function sendVerificationEmail(email: string, code: string) {
   try {
@@ -26,8 +40,17 @@ export async function sendVerificationEmail(email: string, code: string) {
       return { success: true }
     }
 
+    if (!transporter) {
+      console.error('[Email] Transporter not initialized')
+      return { success: false, error: 'Email service not configured' }
+    }
+
+    // Test connection before sending
+    await transporter.verify()
+    console.log('[Email] SMTP connection verified')
+
     // Production mode - send actual email
-    await transporter.sendMail({
+    const result = await transporter.sendMail({
       from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
       to: email,
       subject: 'Verify Your Email - FYP Project',
@@ -45,9 +68,11 @@ export async function sendVerificationEmail(email: string, code: string) {
         </div>
       `,
     })
+
+    console.log('[Email] Verification email sent successfully:', result.messageId)
     return { success: true }
   } catch (error) {
-    console.error('Email sending error:', error)
+    console.error('[Email] Email sending error:', error)
     return { success: false, error: 'Failed to send verification email' }
   }
 }

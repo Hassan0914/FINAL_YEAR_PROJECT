@@ -116,10 +116,6 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
 
     if (scores.gestures_on_table > 4) {
       strengths.push("Effective gesturing while maintaining table contact")
-    }
-
-    if (scores.other_gestures > 4) {
-      strengths.push("Good use of expressive gestures")
     } else {
       improvements.push("Consider using more hand gestures to emphasize points")
     }
@@ -292,7 +288,7 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
                       <ScoreGauge 
                         title="Gesture Usage" 
-                        score={Math.max(getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures'), getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table'))} 
+                        score={getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table')} 
                         color="gray" 
                       />
                     </motion.div>
@@ -376,20 +372,6 @@ export function VideoAnalysisModal({ open, onOpenChange }: VideoAnalysisModalPro
                             initial={{ width: 0 }}
                             animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'gestures_on_table') / 7) * 100}%` }}
                             transition={{ duration: 1, delay: 0.7 }}
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between items-center">
-                          <span className="text-gray-300">Other Gestures</span>
-                          <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures')}/7</span>
-                        </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
-                          <motion.div
-                            className="bg-gradient-to-r from-gray-400 to-gray-600 h-2 rounded-full"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(getGestureScore(analysisResult.gesture_analysis.scores, 'other_gestures') / 7) * 100}%` }}
-                            transition={{ duration: 1, delay: 0.9 }}
                           />
                         </div>
                       </div>

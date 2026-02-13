@@ -146,6 +146,8 @@ export default function UploadPage() {
       startProgressSimulation()
 
       console.log("Calling unified video analysis API...")
+      console.log("Video file size:", (uploadedFile.size / (1024 * 1024)).toFixed(2), "MB")
+      
       // Call the unified video analysis API (gesture + smile)
       const response = await fetch('/api/analyze-video', {
         method: 'POST',
@@ -156,10 +158,34 @@ export default function UploadPage() {
       clearInterval(progressInterval)
 
       const result = await response.json()
+      console.log("API response status:", response.status)
       console.log("API response:", result)
 
       if (!response.ok) {
-        throw new Error(result.error || 'Analysis failed')
+        // Handle authentication errors specifically
+        if (response.status === 401) {
+          console.error('Authentication expired during video processing')
+          alert('Your session expired during video processing. Please sign in again.')
+          router.push('/auth/login?callbackUrl=/upload')
+          return
+        }
+        
+        // Handle timeout errors
+        if (response.status === 504) {
+          console.error('Video processing timeout')
+          throw new Error('Video processing took too long. Please try a shorter video or reduce the video resolution.')
+        }
+        
+        // Handle backend unavailable
+        if (response.status === 503) {
+          console.error('Backend service unavailable')
+          throw new Error('Analysis service is currently unavailable. Please try again later.')
+        }
+        
+        // Generic error with details from backend
+        const errorMsg = result.error || 'Analysis failed. Please try again.'
+        console.error('Analysis failed:', errorMsg)
+        throw new Error(errorMsg)
       }
 
       // Set progress to 100% only after API completes successfully
@@ -180,7 +206,22 @@ export default function UploadPage() {
 
       // Redirect to dashboard after 2 seconds
       setTimeout(() => {
-        router.push("/dashboard")
+        // Ensure session is still valid before redirect
+        fetch('/api/auth/session')
+          .then(res => res.json())
+          .then(session => {
+            if (session?.user) {
+              console.log('Session validated, redirecting to dashboard')
+              router.push("/dashboard")
+            } else {
+              console.error('Session lost, redirecting to login')
+              router.push('/auth/login?callbackUrl=/dashboard')
+            }
+          })
+          .catch(() => {
+            console.error('Session check failed, redirecting to login')
+            router.push('/auth/login?callbackUrl=/dashboard')
+          })
       }, 2000)
 
     } catch (error) {

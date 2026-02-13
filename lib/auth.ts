@@ -55,6 +55,7 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // Update session every 24 hours
   },
   jwt: {
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -63,19 +64,35 @@ export const authOptions: NextAuthOptions = {
     signIn: "/auth/login",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async redirect({ url, baseUrl }) {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      // Allows callback URLs on the same origin
+      else if (new URL(url).origin === baseUrl) return url
+      return baseUrl
+    },
+    async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id
         token.email = user.email
         token.name = user.name
+        console.log("[NextAuth] JWT token created for user:", user.email)
+      }
+      // Log token refresh for debugging
+      if (trigger === "update") {
+        console.log("[NextAuth] JWT token refreshed for user:", token.email)
       }
       return token
     },
-    async session({ session, token }) {
+    async session({ session, token, trigger }) {
       if (token) {
         session.user.id = token.id as string
         session.user.email = token.email as string
         session.user.name = token.name as string
+      }
+      // Log session updates for debugging
+      if (trigger === "update") {
+        console.log("[NextAuth] Session updated for user:", session.user.email)
       }
       return session
     },

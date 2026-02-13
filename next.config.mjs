@@ -9,13 +9,14 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Increase timeout for API routes (in seconds)
-  // Note: This is a general setting, individual routes can override with maxDuration export
+  // API Routes configuration for large video uploads
   experimental: {
     serverActions: {
-      bodySizeLimit: '100mb',
+      bodySizeLimit: '500mb', // Increased for large videos
     },
   },
+  // Note: maxDuration is configured per route in route.ts files
+  // This allows different timeouts for different endpoints
 }
 
 export default nextConfig

@@ -263,12 +263,6 @@ export default function HistoryPage() {
                                 {formatScore(analysis.selfTouch)}/7
                               </div>
                             </div>
-                            <div className="bg-gray-800/30 p-3 rounded-lg col-span-2">
-                              <div className="text-xs text-gray-400 mb-1">Other Gestures</div>
-                              <div className="text-lg font-bold text-white">
-                                {formatScore(analysis.otherGestures)}/7
-                              </div>
-                            </div>
                           </div>
                           {analysis.gestureFrames && (
                             <div className="text-xs text-gray-500 mt-2">

@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     doc.setTextColor(200, 200, 200)
     doc.text('Gesture Usage', 145, metricsY + 8)
     
-    const gestureUsage = Math.max(gestureScores.other_gestures, gestureScores.gestures_on_table)
+    const gestureUsage = gestureScores.gestures_on_table
     doc.setFontSize(18)
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
@@ -131,7 +131,6 @@ export async function POST(request: NextRequest) {
       { key: 'hidden_hands', label: 'Hidden Hands', description: 'Hands not visible' },
       { key: 'hands_on_table', label: 'Hands on Table', description: 'Resting on table' },
       { key: 'gestures_on_table', label: 'Gestures on Table', description: 'Gesturing near table' },
-      { key: 'other_gestures', label: 'Other Gestures', description: 'Expressive gestures' },
       { key: 'self_touch', label: 'Self Touch', description: 'Touching face/body' }
     ]
     
@@ -245,8 +244,7 @@ export async function POST(request: NextRequest) {
     }
     if (gestureScores.gestures_on_table > 3) {
       recommendations.push('✅ Good use of table gestures for emphasis')
-    }
-    if (gestureScores.other_gestures < 2) {
+    } else {
       recommendations.push('🚀 Try incorporating more varied hand gestures')
     }
     if (gestureScores.self_touch > 3) {
