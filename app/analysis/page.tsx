@@ -14,7 +14,6 @@ interface GestureScores {
   hidden_hands: number
   hands_on_table: number
   gestures_on_table: number
-  other_gestures: number
   self_touch: number
 }
 
@@ -61,8 +60,6 @@ export default function AnalysisPage() {
 
     if (scores.gestures_on_table > 4) {
       strengths.push("Effective gesturing while maintaining table contact")
-    } else {
-      improvements.push("Consider using more hand gestures to emphasize points")
     }
 
     if (scores.self_touch > 4) {
@@ -195,13 +192,13 @@ export default function AnalysisPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Hands on Table</span>
-                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'hands_on_table')}/7</span>
+                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'hands_on_table')}/10</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                     <motion.div
                       className="bg-gradient-to-r from-gray-500 to-gray-700 h-2 rounded-full"
                       initial={{ width: 0 }}
-                      animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'hands_on_table') / 7) * 100}%` }}
+                      animate={{ width: `${(getGestureScore(analysisResult.gesture_scores, 'hands_on_table') / 10) * 100}%` }}
                       transition={{ duration: 1, delay: 0.5 }}
                     />
                   </div>
@@ -209,7 +206,7 @@ export default function AnalysisPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Gestures on Table</span>
-                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'gestures_on_table')}/7</span>
+                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'gestures_on_table')}/10</span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                   <motion.div
@@ -223,7 +220,7 @@ export default function AnalysisPage() {
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-gray-300">Self Touch</span>
-                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'self_touch')}/7</span>
+                    <span className="text-white font-semibold">{getGestureScore(analysisResult.gesture_scores, 'self_touch')}/10</span>
                     </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
                       <motion.div

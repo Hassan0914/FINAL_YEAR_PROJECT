@@ -17,13 +17,38 @@ export default function VerifyEmailPage() {
   const [errorMessage, setErrorMessage] = useState("")
   const [errorType, setErrorType] = useState("")
   const [email, setEmail] = useState("")
+  const [devCode, setDevCode] = useState<string | null>(null)
 
   useEffect(() => {
     // Get email from localStorage or URL params
     const storedEmail = localStorage.getItem('signupEmail')
     const urlEmail = searchParams.get('email')
-    setEmail(storedEmail || urlEmail || "")
+    const emailValue = storedEmail || urlEmail || ""
+    setEmail(emailValue)
+
+    // Always try to fetch the code automatically (will work in dev mode)
+    if (emailValue) {
+      fetchDevCode(emailValue)
+    }
   }, [searchParams])
+
+  const fetchDevCode = async (emailToFetch: string) => {
+    try {
+      const response = await fetch('/api/auth/dev-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailToFetch }),
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        setDevCode(data.code)
+        setCode(data.code) // Auto-fill the code
+      }
+    } catch (error) {
+      // Silently fail - this is just a dev convenience feature
+      console.log('Could not fetch dev code:', error)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,7 +73,7 @@ export default function VerifyEmailPage() {
       const data = await response.json()
 
       if (response.ok && data.success) {
-        // Case 1: Correct code - store token and redirect to upload page
+        // Case 1: Correct code - store token and create NextAuth session
         localStorage.setItem('auth-token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
         localStorage.removeItem('signupEmail') // Clean up
@@ -57,10 +82,36 @@ export default function VerifyEmailPage() {
         setErrorMessage(data.message)
         setErrorType("verification_success")
         
-        // Redirect to upload page after 2 seconds
-        setTimeout(() => {
-          router.push('/upload')
-        }, 2000)
+        // Create NextAuth session using JWT token (no password needed)
+        const { signIn } = await import('next-auth/react')
+        
+        try {
+          // Sign in with NextAuth using JWT token instead of password
+          const signInResult = await signIn('credentials', {
+            email: data.user.email,
+            jwtToken: data.token, // Use JWT token instead of password
+            redirect: false,
+          })
+          
+          if (signInResult?.error) {
+            console.error('NextAuth signIn error:', signInResult.error)
+            // Still redirect, but user might need to log in manually
+            setTimeout(() => {
+              window.location.href = '/auth/login?verified=true'
+            }, 1500)
+          } else {
+            // Success! Redirect to dashboard
+            setTimeout(() => {
+              window.location.href = '/dashboard'
+            }, 1000)
+          }
+        } catch (error) {
+          console.error('Error creating session:', error)
+          // Fallback: redirect to login with verified flag
+          setTimeout(() => {
+            window.location.href = '/auth/login?verified=true'
+          }, 1500)
+        }
       } else {
         // Case 2: Incorrect code or other errors
         setErrorMessage(data.message || data.error)
@@ -89,9 +140,20 @@ export default function VerifyEmailPage() {
       if (response.ok) {
         setErrorMessage(data.message || 'Verification code sent. Please check your email.')
         setErrorType('info')
+        // Fetch the new code in development mode
+        await fetchDevCode(email)
       } else {
-        setErrorMessage(data.message || data.error || 'Failed to resend code. Please try again.')
-        setErrorType(data.errorType || 'error')
+        // Check if error is "already verified"
+        if (data.errorType === 'already_verified') {
+          setErrorMessage("Your email is already verified! Redirecting to login...")
+          setErrorType("info")
+          setTimeout(() => {
+            router.push('/auth/login')
+          }, 2000)
+        } else {
+          setErrorMessage(data.message || data.error || 'Failed to resend code. Please try again.')
+          setErrorType(data.errorType || 'error')
+        }
       }
     } catch (error) {
       setErrorMessage("Failed to resend code. Please try again.")
@@ -126,6 +188,26 @@ export default function VerifyEmailPage() {
           </CardHeader>
 
           <CardContent className="space-y-6">
+            {/* Development Mode - Show Code */}
+            {devCode && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-yellow-300 font-semibold text-sm">Development Mode</p>
+                </div>
+                <p className="text-yellow-200 text-sm mb-2">Your verification code (auto-filled):</p>
+                <div className="bg-gray-800/50 border border-yellow-500/50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-yellow-300 tracking-widest">{devCode}</p>
+                </div>
+                <p className="text-yellow-200/70 text-xs mt-2">Code is already filled in the input below. Click "Verify Email" to continue.</p>
+              </motion.div>
+            )}
             {errorMessage && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
@@ -165,6 +247,14 @@ export default function VerifyEmailPage() {
                   </div>
                 </div>
               </motion.div>
+            )}
+
+            {devCode && (
+              <div className="mb-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+                <p className="text-sm text-blue-300 text-center">
+                  <strong>Dev Mode:</strong> Your verification code is <span className="font-mono text-lg font-bold">{devCode}</span>
+                </p>
+              </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">

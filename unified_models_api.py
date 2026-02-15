@@ -21,6 +21,7 @@ import tempfile
 import logging
 from datetime import datetime
 import traceback
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -72,12 +73,9 @@ def load_gesture_model():
         # Import gesture predictor
         from predict_gesture import GesturePredictor
         
-        # Load model
-        model_path = os.path.join(GESTURE_MODEL_DIR, "gesture_model.h5")
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Gesture model not found: {model_path}")
-        
-        gesture_predictor = GesturePredictor(model_path)
+        # Load model - GesturePredictor will automatically find bilstm_epoch_15.keras or gesture_model.h5
+        # Pass None to use the automatic model detection in GesturePredictor
+        gesture_predictor = GesturePredictor(model_path=None)
         logger.info("✅ Gesture model loaded successfully")
         return True
         
@@ -141,8 +139,19 @@ def load_smile_model():
             except:
                 pass
         
-        logger.error(f"❌ Failed to load smile model: {e}")
+        logger.error("=" * 70)
+        logger.error(f"❌ FAILED TO LOAD SMILE MODEL")
+        logger.error("=" * 70)
+        logger.error(f"Error: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Model path: {model_path}")
+        logger.error(f"Model path exists: {os.path.exists(model_path)}")
+        logger.error(f"Smile model directory: {abs_smile_dir}")
+        logger.error(f"Smile model directory exists: {os.path.exists(abs_smile_dir)}")
+        logger.error("")
+        logger.error("Full traceback:")
         logger.error(traceback.format_exc())
+        logger.error("=" * 70)
         smile_predictor = None
         return False
 
@@ -190,14 +199,16 @@ async def startup_event():
     logger.info("\n[1/2] Loading Gesture Analysis Model...")
     gesture_loaded = load_gesture_model()
     
-    # Load smile model
+    # Load smile model - COMMENTED OUT (NumPy version compatibility issues)
     logger.info("\n[2/2] Loading Smile/Facial Analysis Model...")
-    smile_loaded = load_smile_model()
+    logger.info("⚠️  Smile model loading disabled due to NumPy version compatibility issues")
+    smile_loaded = False
+    # smile_loaded = load_smile_model()
     
     logger.info("\n" + "=" * 70)
     logger.info("Server Startup Summary:")
     logger.info(f"  Gesture Model: {'✅ Loaded' if gesture_loaded else '❌ Failed'}")
-    logger.info(f"  Smile Model:   {'✅ Loaded' if smile_loaded else '❌ Failed'}")
+    logger.info(f"  Smile Model:   ❌ Disabled (NumPy compatibility)")
     logger.info("=" * 70)
     logger.info("\n🚀 Server ready! Visit http://localhost:8000/docs for API documentation")
     logger.info("=" * 70 + "\n")
@@ -311,20 +322,24 @@ async def analyze_gesture(file: UploadFile = File(...)):
                 detail="No landmarks extracted from video. Ensure video contains visible person with hands."
             )
         
-        # Make predictions using sliding window
+        # Make predictions using sliding window (MATCHING TRAINING: 30 frames, stride=30)
         logger.info("Making gesture predictions...")
         predictions = []
-        window_size = SEQUENCE_LENGTH
-        stride = window_size // 3
+        window_size = SEQUENCE_LENGTH  # 30 frames (1 second @ 30 FPS)
+        stride = window_size  # Non-overlapping windows (MATCHING TRAINING)
         
+        # Process windows (non-overlapping, matching training)
         for start_idx in range(0, len(landmarks_sequence) - window_size + 1, stride):
             window = landmarks_sequence[start_idx:start_idx + window_size]
             result = gesture_predictor.predict(window)
             predictions.append(result['class'])
         
-        # Last window if needed
-        if len(landmarks_sequence) >= window_size:
-            last_window = landmarks_sequence[-window_size:]
+        # Handle remaining frames: pad if less than window_size, or use last window
+        remaining = len(landmarks_sequence) % window_size
+        if remaining > 0 and remaining < window_size:
+            # Pad remaining frames to window_size (matching training behavior)
+            last_window = np.zeros((window_size, landmarks_sequence.shape[1]), dtype=landmarks_sequence.dtype)
+            last_window[:remaining] = landmarks_sequence[-remaining:]
             result = gesture_predictor.predict(last_window)
             predictions.append(result['class'])
         
@@ -484,9 +499,10 @@ async def analyze_all(file: UploadFile = File(...)):
         if not gesture_predictor:
             logger.info("Gesture model not loaded yet. Attempting to load...")
             load_gesture_model()
-        if not smile_predictor:
-            logger.info("Smile model not loaded yet. Attempting to load...")
-            load_smile_model()
+        # Smile model loading commented out - causing NumPy version issues
+        # if not smile_predictor:
+        #     logger.info("Smile model not loaded yet. Attempting to load...")
+        #     load_smile_model()
 
         # Save uploaded file
         logger.info("💾 Saving uploaded file to temporary location...")
@@ -510,6 +526,10 @@ async def analyze_all(file: UploadFile = File(...)):
                 sys.path.insert(0, GESTURE_MODEL_DIR)
                 from process_video import extract_landmarks_from_video, calculate_scores
                 from predict_gesture import SEQUENCE_LENGTH
+                import cv2
+                
+                # All videos are 30 FPS (hardcoded as per requirement)
+                fps = 30.0
                 
                 logger.info("   Extracting hand landmarks from video...")
                 landmarks_sequence = extract_landmarks_from_video(temp_file_path)
@@ -520,22 +540,121 @@ async def analyze_all(file: UploadFile = File(...)):
                 
                 logger.info("   Running gesture predictions...")
                 predictions = []
-                window_size = SEQUENCE_LENGTH
-                stride = window_size // 3
+                probabilities_per_second = []  # Store probabilities grouped by second
+                window_size = SEQUENCE_LENGTH  # 30 frames (1 second @ 30 FPS)
+                stride = window_size  # Non-overlapping windows (MATCHING TRAINING)
                 
+                # Track which second each prediction belongs to
+                current_second = -1
+                second_probabilities = []  # Accumulate probabilities for current second
+                
+                logger.info(f"\n{'='*70}")
+                logger.info("GESTURE PREDICTION - PROBABILITIES PER SECOND")
+                logger.info(f"{'='*70}")
+                logger.info(f"Video FPS: {fps:.2f} (hardcoded - all videos are 30 FPS)")
+                logger.info(f"Total frames extracted: {len(landmarks_sequence)} (ALL frames, not skipping)")
+                logger.info(f"Estimated duration: {len(landmarks_sequence)/fps:.2f} seconds")
+                logger.info(f"Window size: {window_size} frames (1 second @ 30 FPS)")
+                logger.info(f"Stride: {stride} frames (non-overlapping windows)")
+                logger.info(f"Prediction method: Softmax probabilities from BiLSTM model")
+                logger.info(f"{'='*70}\n")
+                
+                window_count = 0
                 for start_idx in range(0, len(landmarks_sequence) - window_size + 1, stride):
+                    # Extract 30 frames (1 second) for prediction
                     window = landmarks_sequence[start_idx:start_idx + window_size]
+                    
+                    # Predict using softmax probabilities (model.predict returns softmax probabilities)
                     result = gesture_predictor.predict(window)
                     predictions.append(result['class'])
+                    
+                    # With non-overlapping windows (stride = window_size), each window = 1 second
+                    window_second = window_count  # Each window corresponds to 1 second
+                    
+                    # Store softmax probabilities for this second (already normalized to sum to 1.0)
+                    filtered_probs = {k: v for k, v in result['all_probabilities'].items() if k != 'other_gestures'}
+                    probabilities_per_second.append(filtered_probs)
+                    
+                    # Store probabilities (will log summary at end)
+                    window_count += 1
                 
-                if len(landmarks_sequence) >= window_size:
-                    last_window = landmarks_sequence[-window_size:]
+                # Handle remaining frames (pad to window_size if needed, matching training behavior)
+                remaining = len(landmarks_sequence) % window_size
+                if remaining > 0:
+                    # Pad remaining frames to window_size (matching training behavior)
+                    last_window = np.zeros((window_size, landmarks_sequence.shape[1]), dtype=landmarks_sequence.dtype)
+                    last_window[:remaining] = landmarks_sequence[-remaining:]
                     result = gesture_predictor.predict(last_window)
                     predictions.append(result['class'])
+                    
+                    # Store softmax probabilities for this second (padded window)
+                    filtered_probs = {k: v for k, v in result['all_probabilities'].items() if k != 'other_gestures'}
+                    probabilities_per_second.append(filtered_probs)
                 
-                logger.info(f"   ✅ Generated {len(predictions)} predictions")
+                # Calculate scores using probabilities per second
+                scores = calculate_scores(predictions, len(predictions), probabilities_per_second)
                 
-                scores = calculate_scores(predictions, len(predictions))
+                # ========================================================================
+                # PROBABILITIES PER SECOND - DETAILED TABLE
+                # ========================================================================
+                logger.info(f"\n{'='*70}")
+                logger.info("PROBABILITIES PER SECOND (SOFTMAX OUTPUT)")
+                logger.info(f"{'='*70}")
+                logger.info(f"{'Second':<8} {'self_touch':<12} {'hands_on_table':<15} {'hidden_hands':<13} {'gestures_on_table':<18} {'Predicted':<15}")
+                logger.info(f"{'-'*70}")
+                
+                class_names = ['self_touch', 'hands_on_table', 'hidden_hands', 'gestures_on_table']
+                for second_idx, prob_dict in enumerate(probabilities_per_second):
+                    frame_start = second_idx * window_size
+                    frame_end = min(frame_start + window_size - 1, len(landmarks_sequence) - 1)
+                    predicted_class = predictions[second_idx] if second_idx < len(predictions) else "N/A"
+                    
+                    logger.info(f"  {second_idx:<8} "
+                              f"{prob_dict.get('self_touch', 0):.4f}      "
+                              f"{prob_dict.get('hands_on_table', 0):.4f}         "
+                              f"{prob_dict.get('hidden_hands', 0):.4f}      "
+                              f"{prob_dict.get('gestures_on_table', 0):.4f}            "
+                              f"{predicted_class:<15}")
+                
+                logger.info(f"{'='*70}")
+                
+                # ========================================================================
+                # FINAL SCORE CALCULATION
+                # ========================================================================
+                logger.info(f"\n{'='*70}")
+                logger.info("FINAL SCORE CALCULATION")
+                logger.info(f"{'='*70}")
+                logger.info(f"Total seconds analyzed: {len(probabilities_per_second)}")
+                logger.info(f"Calculation method: Average of softmax probabilities across all seconds, then × 10")
+                logger.info("")
+                
+                # Show average probabilities and final scores
+                prob_matrix = [[prob.get(cn, 0.0) for cn in class_names] for prob in probabilities_per_second]
+                avg_probs = np.mean(prob_matrix, axis=0)
+                
+                logger.info("Step 1: Average Probabilities (across all seconds):")
+                for i, class_name in enumerate(class_names):
+                    logger.info(f"  {class_name:20s}: {avg_probs[i]:.4f}")
+                
+                logger.info("")
+                logger.info("Step 2: Final Scores (avg_probability × 10):")
+                logger.info(f"  self_touch:        {scores.get('self_touch', 0):.2f}/10")
+                logger.info(f"  hands_on_table:    {scores.get('hands_on_table', 0):.2f}/10")
+                logger.info(f"  hidden_hands:      {scores.get('hidden_hands', 0):.2f}/10")
+                logger.info(f"  gestures_on_table: {scores.get('gestures_on_table', 0):.2f}/10")
+                logger.info("")
+                logger.info("Step 3: Weighted Fusion (Research-Based Weights):")
+                logger.info("  Weights: hands_on_table=32.2%, hidden_hands=26.4%, gestures_on_table=20.7%, self_touch=20.7%")
+                logger.info("  Note: Negative indicators (hidden_hands, gestures_on_table, self_touch) are inverted")
+                logger.info(f"{'='*70}\n")
+                
+                # Ensure scores are properly formatted
+                gesture_scores = {
+                    "self_touch": float(scores.get('self_touch', 0)),
+                    "hands_on_table": float(scores.get('hands_on_table', 0)),
+                    "hidden_hands": float(scores.get('hidden_hands', 0)),
+                    "gestures_on_table": float(scores.get('gestures_on_table', 0))
+                }
                 
                 gesture_duration = (datetime.now() - gesture_start).total_seconds()
                 logger.info(f"✅ Gesture analysis completed in {gesture_duration:.2f}s")
@@ -544,15 +663,11 @@ async def analyze_all(file: UploadFile = File(...)):
                     "success": True,
                     "model": "gesture",
                     "video_name": file.filename,
-                    "scores": {
-                        "self_touch": scores.get('self_touch', 0),
-                        "hands_on_table": scores.get('hands_on_table', 0),
-                        "hidden_hands": scores.get('hidden_hands', 0),
-                        "gestures_on_table": scores.get('gestures_on_table', 0),
-                        "other_gestures": scores.get('other_gestures', 0)
-                    },
+                    "scores": gesture_scores,
+                    "overall_score": None,  # Will be calculated after smile analysis
                     "frames_processed": len(landmarks_sequence),
-                    "total_predictions": len(predictions)
+                    "total_predictions": len(predictions),
+                    "probabilities_per_second": probabilities_per_second
                 }
             except Exception as e:
                 logger.error(f"Gesture analysis failed: {e}")
@@ -567,39 +682,86 @@ async def analyze_all(file: UploadFile = File(...)):
                 "error": "Gesture model not loaded"
             }
         
-        # Analyze smile
-        if smile_predictor:
-            try:
-                smile_start = datetime.now()
-                logger.info("😊 Starting smile/facial analysis...")
-                # Use the smile predictor function directly
-                smile_result = smile_predictor(temp_file_path)
-                
-                smile_duration = (datetime.now() - smile_start).total_seconds()
-                logger.info(f"✅ Smile analysis completed in {smile_duration:.2f}s")
-                logger.info(f"   Score: {smile_result.get('smile_score', 0)}/10")
-                
-                results["smile_analysis"] = {
-                    "success": True,
-                    "model": "smile",
-                    "video_name": file.filename,
-                    "smile_score": smile_result.get('smile_score', 0),
-                    "interpretation": smile_result.get('interpretation', 'Unknown'),
-                    "frames_processed": smile_result.get('frames_processed', 0),
-                    "video_duration_seconds": smile_result.get('video_duration_seconds', 0)
-                }
-            except Exception as e:
-                logger.error(f"Smile analysis failed: {e}")
-                logger.error(traceback.format_exc())
-                results["smile_analysis"] = {
-                    "success": False,
-                    "error": str(e)
-                }
-        else:
-            results["smile_analysis"] = {
-                "success": False,
-                "error": "Smile model not loaded"
-            }
+        # Analyze smile - COMMENTED OUT (NumPy version mismatch issues)
+        # Skip smile analysis for now - just return a placeholder
+        results["smile_analysis"] = {
+            "success": False,
+            "error": "Smile model temporarily disabled due to NumPy version compatibility issues",
+            "smile_score": None,
+            "interpretation": "N/A - Smile model not available"
+        }
+        logger.info("Smile analysis skipped - model disabled due to compatibility issues")
+        
+        # Original smile analysis code (commented out):
+        # if smile_predictor:
+        #     try:
+        #         smile_start = datetime.now()
+        #         logger.info("😊 Running smile analysis...")
+        #         # Use the smile predictor function directly
+        #         smile_result = smile_predictor(temp_file_path)
+        #         
+        #         # Convert smile score from 1-7 scale to 1-10 scale if needed
+        #         smile_score = smile_result.get('smile_score', 0)
+        #         if smile_score > 0 and smile_score <= 7:
+        #             # Scale from 1-7 to 1-10
+        #             smile_score = ((smile_score - 1) / 6) * 9 + 1
+        #         
+        #         smile_duration = (datetime.now() - smile_start).total_seconds()
+        #         logger.info(f"✅ Smile analysis completed in {smile_duration:.2f}s")
+        #         
+        #         results["smile_analysis"] = {
+        #             "success": True,
+        #             "model": "smile",
+        #             "video_name": file.filename,
+        #             "smile_score": round(smile_score, 2),
+        #             "interpretation": smile_result.get('interpretation', 'Unknown'),
+        #             "frames_processed": smile_result.get('frames_processed', 0),
+        #             "video_duration_seconds": smile_result.get('video_duration_seconds', 0),
+        #             "processing_time_seconds": round(smile_duration, 2)
+        #         }
+        #     except Exception as e:
+        #         logger.error(f"Smile analysis failed: {e}")
+        #         logger.error(traceback.format_exc())
+        #         results["smile_analysis"] = {
+        #             "success": False,
+        #             "error": str(e)
+        #         }
+        # else:
+        #     results["smile_analysis"] = {
+        #         "success": False,
+        #         "error": "Smile model not loaded"
+        #     }
+        
+        # Calculate overall score AFTER both analyses complete
+        if results.get("gesture_analysis") and results["gesture_analysis"].get("success"):
+            from process_video import calculate_weighted_fusion_score
+            
+            gesture_scores = results["gesture_analysis"]["scores"]
+            # Get smile score if available
+            smile_score = None
+            if results.get("smile_analysis") and results["smile_analysis"].get("success"):
+                smile_score = results["smile_analysis"].get("smile_score")
+            
+            overall_score = calculate_weighted_fusion_score(gesture_scores, smile_score=smile_score)
+            
+            # Update gesture_analysis with final overall score
+            results["gesture_analysis"]["overall_score"] = overall_score
+            
+            logger.info("")
+            logger.info("="*70)
+            logger.info("FINAL WEIGHTED FUSION CALCULATION")
+            logger.info("="*70)
+            logger.info(f"  hands_on_table:    {gesture_scores['hands_on_table']:.2f}/10 × 0.322 = {gesture_scores['hands_on_table'] * 0.322:.2f}")
+            logger.info(f"  hidden_hands:      (10 - {gesture_scores['hidden_hands']:.2f}) × 0.264 = {(10 - gesture_scores['hidden_hands']) * 0.264:.2f}")
+            logger.info(f"  gestures_on_table: (10 - {gesture_scores['gestures_on_table']:.2f}) × 0.207 = {(10 - gesture_scores['gestures_on_table']) * 0.207:.2f}")
+            logger.info(f"  self_touch:        (10 - {gesture_scores['self_touch']:.2f}) × 0.207 = {(10 - gesture_scores['self_touch']) * 0.207:.2f}")
+            if smile_score is not None:
+                logger.info(f"  smile:             {smile_score:.2f}/10 × 0.13 = {smile_score * 0.13:.2f}")
+            else:
+                logger.info(f"  smile:             N/A (not available)")
+            logger.info(f"  ─────────────────────────────────────────────")
+            logger.info(f"  Overall Score:     {overall_score:.2f}/10")
+            logger.info("="*70)
         
         # Calculate total processing time
         total_time = (datetime.now() - start_time).total_seconds()
@@ -611,6 +773,13 @@ async def analyze_all(file: UploadFile = File(...)):
         logger.info(f"📊 Gesture: {results['gesture_analysis']['success'] if results.get('gesture_analysis') else False}")
         logger.info(f"😊 Smile: {results['smile_analysis']['success'] if results.get('smile_analysis') else False}")
         logger.info("=" * 70)
+        
+        # Return success if gesture analysis succeeded, even if smile failed
+        # This allows the frontend to display gesture results even when smile model has issues
+        if results.get("gesture_analysis") and results["gesture_analysis"].get("success"):
+            results["success"] = True
+        else:
+            results["success"] = False
         
         return results
         
@@ -646,7 +815,7 @@ if __name__ == "__main__":
     print("\n⚙️  Server Configuration:")
     print("   - Timeout: Unlimited (supports long video processing)")
     print("   - Max Request Size: 500MB (supports large video files)")
-    print("   - Keep-Alive: 300 seconds")
+    print("   - Keep-Alive: 3000 seconds")
     print("\n" + "=" * 70 + "\n")
     
     uvicorn.run(
@@ -655,7 +824,7 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
         log_level="info",
-        timeout_keep_alive=300,  # 5 minutes keep-alive for long processing
+        timeout_keep_alive=3000,  # 50 minutes keep-alive for long processing
         limit_concurrency=10,     # Limit concurrent requests
         limit_max_requests=1000,  # Restart worker after 1000 requests (memory leak prevention)
     )

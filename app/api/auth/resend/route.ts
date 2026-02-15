@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     const normalizedEmail = String(email).toLowerCase().trim()
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    const user = await prisma.users.findUnique({ where: { email: normalizedEmail } })
     if (!user) {
       return NextResponse.json({
         error: "User not found",
@@ -26,13 +26,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: "Email already verified",
         errorType: "already_verified",
+        message: "This email is already verified. You can log in directly.",
       }, { status: 400 })
     }
 
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString()
     const codeExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-    await prisma.user.update({
+    await prisma.users.update({
       where: { id: user.id },
       data: { verificationCode, codeExpiresAt },
     })

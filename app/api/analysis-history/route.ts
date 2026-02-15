@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       console.log('[Analysis History] Fetching monthly aggregation')
       
       // Fetch all analyses for the user (for aggregation)
-      const analyses = await prisma.analysisHistory.findMany({
+      const analyses = await prisma.analysis_history.findMany({
         where: {
           userId: session.user.id
         },
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
           hiddenHands: true,
           gestureOnTable: true,
           selfTouch: true,
-          otherGestures: true,
           smileScore: true,
+          finalScore: true,
           createdAt: true,
         }
       })
@@ -64,14 +64,12 @@ export async function GET(request: NextRequest) {
             hiddenHandsSum: 0,
             gestureOnTableSum: 0,
             selfTouchSum: 0,
-            otherGesturesSum: 0,
             smileScoreSum: 0,
             validScores: {
               handsOnTable: 0,
               hiddenHands: 0,
               gestureOnTable: 0,
               selfTouch: 0,
-              otherGestures: 0,
               smileScore: 0,
             }
           }
@@ -94,10 +92,6 @@ export async function GET(request: NextRequest) {
         if (analysis.selfTouch !== null) {
           monthlyData[monthKey].selfTouchSum += analysis.selfTouch
           monthlyData[monthKey].validScores.selfTouch++
-        }
-        if (analysis.otherGestures !== null) {
-          monthlyData[monthKey].otherGesturesSum += analysis.otherGestures
-          monthlyData[monthKey].validScores.otherGestures++
         }
         if (analysis.smileScore !== null) {
           monthlyData[monthKey].smileScoreSum += analysis.smileScore
@@ -122,9 +116,6 @@ export async function GET(request: NextRequest) {
           selfTouch: data.validScores.selfTouch > 0 
             ? (data.selfTouchSum / data.validScores.selfTouch).toFixed(2) 
             : null,
-          otherGestures: data.validScores.otherGestures > 0 
-            ? (data.otherGesturesSum / data.validScores.otherGestures).toFixed(2) 
-            : null,
           smileScore: data.validScores.smileScore > 0 
             ? (data.smileScoreSum / data.validScores.smileScore).toFixed(2) 
             : null,
@@ -145,7 +136,7 @@ export async function GET(request: NextRequest) {
     console.log(`[Analysis History] Fetching list page ${page}, limit ${limit}`)
     
     const [analyses, totalCount] = await Promise.all([
-      prisma.analysisHistory.findMany({
+      prisma.analysis_history.findMany({
         where: {
           userId: session.user.id
         },
@@ -162,8 +153,9 @@ export async function GET(request: NextRequest) {
           hiddenHands: true,
           gestureOnTable: true,
           selfTouch: true,
-          otherGestures: true,
+          // Facial Analysis Score
           smileScore: true,
+          finalScore: true,
           gestureFrames: true,
           facialFrames: true,
           processingTime: true,
@@ -172,7 +164,7 @@ export async function GET(request: NextRequest) {
           createdAt: true,
         }
       }),
-      prisma.analysisHistory.count({
+      prisma.analysis_history.count({
         where: {
           userId: session.user.id
         }
@@ -235,7 +227,7 @@ export async function DELETE(request: NextRequest) {
     console.log(`[Analysis History] Deleting analysis ${analysisId} for user ${session.user.id}`)
 
     // Verify ownership before deleting
-    const analysis = await prisma.analysisHistory.findUnique({
+    const analysis = await prisma.analysis_history.findUnique({
       where: { id: analysisId },
       select: { userId: true }
     })
@@ -255,7 +247,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete the record
-    await prisma.analysisHistory.delete({
+    await prisma.analysis_history.delete({
       where: { id: analysisId }
     })
 

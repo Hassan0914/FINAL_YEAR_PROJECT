@@ -100,6 +100,7 @@ export function AuthModal({ open, onOpenChange }: AuthModalProps) {
           localStorage.setItem('signupEmail', formData.email)
           if (data.devCode) {
             localStorage.setItem('devVerificationCode', data.devCode)
+            console.log('[Auth] Dev mode - Verification code:', data.devCode)
           }
           setErrorMessage(data.message || "Account created! Please check your email for the 6-digit verification code.")
           setErrorType("signup_success")

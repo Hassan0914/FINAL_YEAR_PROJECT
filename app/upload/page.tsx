@@ -23,6 +23,7 @@ export default function UploadPage() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "processing" | "complete" | "error">("idle")
   const [videoPreview, setVideoPreview] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -130,7 +131,7 @@ export default function UploadPage() {
       formData.append('file', uploadedFile)
 
       // Start progress simulation that will be updated by the real API response
-      let progressInterval: NodeJS.Timeout
+      let progressInterval: NodeJS.Timeout | null = null
       const startProgressSimulation = () => {
         progressInterval = setInterval(() => {
           setUploadProgress((prev) => {
@@ -149,17 +150,67 @@ export default function UploadPage() {
       console.log("Video file size:", (uploadedFile.size / (1024 * 1024)).toFixed(2), "MB")
       
       // Call the unified video analysis API (gesture + smile)
-      const response = await fetch('/api/analyze-video', {
-        method: 'POST',
-        body: formData,
-      })
+      // Use AbortController with very long timeout for long videos (2 hours)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => {
+        controller.abort()
+      }, 7200000) // 2 hours timeout for very long videos (6000+ frames)
+      
+      let response: Response
+      try {
+        response = await fetch('/api/analyze-video', {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+      } catch (fetchError) {
+        clearTimeout(timeoutId)
+        
+        // Clear progress interval on error
+        if (progressInterval) {
+          clearInterval(progressInterval)
+        }
+        
+        // Check if it's an abort (timeout) or network error
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          console.error('Request timeout - video processing is taking longer than expected')
+          throw new Error('Video processing is taking longer than expected. The backend may still be processing. Please check the backend console or try again later.')
+        }
+        
+        // Check if it's a network error (connection lost but backend still processing)
+        if (fetchError instanceof Error && (fetchError.message.includes('Failed to fetch') || fetchError.message.includes('network'))) {
+          console.error('Network error - backend may still be processing')
+          throw new Error('Connection lost during processing. The backend may still be analyzing your video. Please check the backend console or wait a few minutes and refresh.')
+        }
+        
+        // Re-throw other errors
+        throw fetchError
+      }
 
       // Clear the progress simulation
-      clearInterval(progressInterval)
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
 
-      const result = await response.json()
-      console.log("API response status:", response.status)
-      console.log("API response:", result)
+      // Try to parse response as JSON, but handle non-JSON errors
+      let result: any
+      try {
+        const responseText = await response.text()
+        console.log("API response status:", response.status)
+        console.log("API response text (first 500 chars):", responseText.substring(0, 500))
+        
+        try {
+          result = JSON.parse(responseText)
+          console.log("API response (parsed):", result)
+        } catch (parseError) {
+          console.error("Failed to parse response as JSON:", parseError)
+          throw new Error(`Backend returned non-JSON response: ${responseText.substring(0, 200)}`)
+        }
+      } catch (parseError) {
+        console.error("Error reading response:", parseError)
+        throw new Error(`Failed to read response from server: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
+      }
 
       if (!response.ok) {
         // Handle authentication errors specifically
@@ -170,21 +221,36 @@ export default function UploadPage() {
           return
         }
         
-        // Handle timeout errors
+        // Handle timeout errors (backend may still be processing)
         if (response.status === 504) {
           console.error('Video processing timeout')
-          throw new Error('Video processing took too long. Please try a shorter video or reduce the video resolution.')
+          // Check if backend is still processing
+          if (result.still_processing || result.timeout) {
+            throw new Error('Video processing is taking longer than expected. The backend is still analyzing your video. Please check the backend console for progress. Results will be saved to your dashboard when complete.')
+          } else {
+            throw new Error('Video processing took too long. The backend may still be processing. Please check the backend console.')
+          }
         }
         
         // Handle backend unavailable
         if (response.status === 503) {
           console.error('Backend service unavailable')
-          throw new Error('Analysis service is currently unavailable. Please try again later.')
+          const backendError = result.error || 'Analysis service is currently unavailable.'
+          throw new Error(`${backendError} Please check if the Python backend (port 8000) is running.`)
         }
         
-        // Generic error with details from backend
-        const errorMsg = result.error || 'Analysis failed. Please try again.'
-        console.error('Analysis failed:', errorMsg)
+        // Get detailed error message from backend
+        let errorMsg = 'Analysis failed. Please try again.'
+        if (result.error) {
+          errorMsg = result.error
+          console.error('Backend error:', errorMsg)
+        } else if (result.detail) {
+          errorMsg = result.detail
+          console.error('Backend detail:', errorMsg)
+        } else {
+          console.error('Unknown error. Response status:', response.status, 'Response:', result)
+        }
+        
         throw new Error(errorMsg)
       }
 
@@ -194,6 +260,9 @@ export default function UploadPage() {
       // Store the analysis result in localStorage for the dashboard
       if (result.data) {
         localStorage.setItem('videoAnalysisResult', JSON.stringify(result.data))
+        if (result.recovered_from_timeout) {
+          console.log("✅ Analysis results recovered from database after connection timeout")
+        }
         console.log("Analysis complete, stored results:", result.data)
       } else {
         console.error("No data in API response:", result)
@@ -226,8 +295,83 @@ export default function UploadPage() {
 
     } catch (error) {
       console.error('Analysis error:', error)
-      setUploadStatus("error")
-      setUploadProgress(0)
+      
+      // Check if it's a timeout/abort error
+      if (error instanceof Error && (error.message.includes('timeout') || error.message.includes('longer than expected') || error.message.includes('Connection lost'))) {
+        // For timeout errors, show a message that backend might still be processing
+        setUploadStatus("processing") // Keep as processing, not error
+        setUploadProgress(95) // Keep progress high
+        setErrorMessage('⚠️ Processing is taking longer than expected. The backend may still be analyzing your video. Checking database for completed results...')
+        
+        console.log("⚠️ Frontend timeout, but backend may still be processing. Starting polling for completed results...")
+        
+        // Start polling the database for completed results
+        if (uploadedFile) {
+          let pollCount = 0
+          const maxPolls = 60 // Poll for up to 5 minutes (60 * 5 seconds)
+          
+          const pollInterval = setInterval(async () => {
+            pollCount++
+            console.log(`[Polling] Check ${pollCount}/${maxPolls} for completed analysis: ${uploadedFile.name}`)
+            
+            try {
+              const pollResponse = await fetch('/api/check-analysis-status', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  videoFileName: uploadedFile.name
+                })
+              })
+              
+              const pollResult = await pollResponse.json()
+              
+              if (pollResult.success && pollResult.completed && pollResult.data) {
+                console.log("✅ Found completed analysis in database! Recovering results...")
+                clearInterval(pollInterval)
+                
+                // Store the recovered results
+                localStorage.setItem('videoAnalysisResult', JSON.stringify(pollResult.data))
+                
+                // Update UI
+                setUploadProgress(100)
+                setUploadStatus("complete")
+                setErrorMessage(null)
+                
+                // Redirect to dashboard
+                setTimeout(() => {
+                  router.push("/dashboard")
+                }, 2000)
+              } else if (pollCount >= maxPolls) {
+                // Stop polling after max attempts
+                console.log("⏱️ Polling timeout - no results found after 5 minutes")
+                clearInterval(pollInterval)
+                setErrorMessage('⚠️ Processing is taking longer than expected. The backend may still be analyzing your video. Please check the backend console. If processing completes, you can check your dashboard for results.')
+              }
+            } catch (pollError) {
+              console.error('[Polling] Error checking status:', pollError)
+              // Continue polling on error
+            }
+          }, 5000) // Poll every 5 seconds
+          
+          // Clean up interval if component unmounts
+          return () => clearInterval(pollInterval)
+        }
+      } else {
+        // For other errors, show normal error handling
+        setUploadStatus("error")
+        setUploadProgress(0)
+        
+        // Show user-friendly error message
+        const errorMsg = error instanceof Error ? error.message : 'Analysis failed. Please try again.'
+        setErrorMessage(errorMsg)
+        
+        // Clear error after 10 seconds
+        setTimeout(() => {
+          setErrorMessage(null)
+        }, 10000)
+      }
     }
   }
 
@@ -236,17 +380,23 @@ export default function UploadPage() {
     setVideoPreview(null)
     setUploadProgress(0)
     setUploadStatus("idle")
+    setErrorMessage(null)
     if (videoPreview) {
       URL.revokeObjectURL(videoPreview)
     }
   }
 
   const getStatusMessage = () => {
+    // If there's a custom error message (e.g., timeout), show it
+    if (errorMessage) {
+      return errorMessage
+    }
+    
     switch (uploadStatus) {
       case "uploading":
         return "Uploading your video..."
       case "processing":
-        return "AI is analyzing your interview gestures and facial expressions... This may take 3-5 minutes for MediaPipe processing"
+        return "AI is analyzing your interview gestures and facial expressions... This may take several minutes for long videos (6000+ frames). Please keep this page open."
       case "complete":
         return "Analysis complete! Redirecting to results..."
       case "error":
@@ -425,10 +575,18 @@ export default function UploadPage() {
                   )}
 
                   {/* Status Message */}
-                  {(uploadStatus === "complete" || uploadStatus === "error") && (
-                    <div className="flex items-center gap-2 p-4 rounded-lg bg-gray-800/30">
+                  {(uploadStatus === "complete" || uploadStatus === "error" || errorMessage) && (
+                    <div className={`flex items-center gap-2 p-4 rounded-lg ${
+                      uploadStatus === "error" ? "bg-red-900/30 border border-red-800/50" : 
+                      errorMessage ? "bg-yellow-900/30 border border-yellow-800/50" :
+                      "bg-gray-800/30"
+                    }`}>
                       {getStatusIcon()}
-                      <span className="text-white">{getStatusMessage()}</span>
+                      <span className={`text-sm ${
+                        uploadStatus === "error" ? "text-red-300" : 
+                        errorMessage ? "text-yellow-300" :
+                        "text-white"
+                      }`}>{getStatusMessage()}</span>
                     </div>
                   )}
 
