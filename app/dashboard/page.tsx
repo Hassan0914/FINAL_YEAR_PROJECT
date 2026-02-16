@@ -692,17 +692,17 @@ export default function DashboardPage() {
 
         {/* Charts Section - Hidden when no data */}
         {recentInterviews.some(i => !i.isEmpty) && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
-              <Card className="bg-gray-900/50 border-gray-700/50 backdrop-blur-sm hover:bg-gray-800/30 transition-all duration-300 hover:shadow-lg hover:shadow-gray-500/20">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5" />
-                    Performance Trend
-                  </CardTitle>
-                  <CardDescription className="text-gray-400">Your interview scores over time</CardDescription>
-                </CardHeader>
-                <CardContent>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
+            <Card className="bg-gray-900/50 border-gray-700/50 backdrop-blur-sm hover:bg-gray-800/30 transition-all duration-300 hover:shadow-lg hover:shadow-gray-500/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Performance Trend
+                </CardTitle>
+                <CardDescription className="text-gray-400">Your interview scores over time</CardDescription>
+              </CardHeader>
+              <CardContent>
                   {(allInterviews.length > 0 || recentInterviews.filter(i => !i.isEmpty && i.score !== null).length > 0) ? (
                     <div className="h-[350px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
@@ -789,20 +789,20 @@ export default function DashboardPage() {
                       No interview data available
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
 
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}>
-              <Card className="bg-gray-900/50 border-gray-700/50 backdrop-blur-sm hover:bg-gray-800/30 transition-all duration-300 hover:shadow-lg hover:shadow-gray-500/20">
-                <CardHeader>
-                  <CardTitle className="text-white flex items-center gap-2">
-                    <Brain className="w-5 h-5" />
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.6 }}>
+            <Card className="bg-gray-900/50 border-gray-700/50 backdrop-blur-sm hover:bg-gray-800/30 transition-all duration-300 hover:shadow-lg hover:shadow-gray-500/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center gap-2">
+                  <Brain className="w-5 h-5" />
                     Feedback
-                  </CardTitle>
+                </CardTitle>
                   <CardDescription className="text-gray-400">Detailed insights into your interview performance</CardDescription>
-                </CardHeader>
-                <CardContent>
+              </CardHeader>
+              <CardContent>
                   {gestureAnalysis?.gesture_scores ? (
                     <div className="h-[350px] overflow-y-auto flex flex-col">
                       <Accordion type="single" collapsible className="w-full space-y-3 flex-1 pb-4">
@@ -891,10 +891,10 @@ export default function DashboardPage() {
                       </Button>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
         )}
 
         {/* Gesture Analysis Results */}
@@ -1084,54 +1084,54 @@ export default function DashboardPage() {
                   <div className="text-gray-400">Loading interviews...</div>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {recentInterviews.map((interview, index) => (
-                    <motion.div
-                      key={interview.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.9 + index * 0.1 }}
-                      className="flex items-center justify-between p-4 rounded-lg bg-gray-800/30 hover:bg-gray-700/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center">
+              <div className="space-y-4">
+                {recentInterviews.map((interview, index) => (
+                  <motion.div
+                    key={interview.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.9 + index * 0.1 }}
+                    className="flex items-center justify-between p-4 rounded-lg bg-gray-800/30 hover:bg-gray-700/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-r from-gray-600 to-gray-800 flex items-center justify-center">
                           <span className="text-white font-bold">
                             {interview.isEmpty || interview.score === null ? '—' : interview.score}
                           </span>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-white font-medium">{interview.company}</div>
-                            {interview.isNew && !interview.isEmpty && (
-                              <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-xs">New</Badge>
-                            )}
-                          </div>
-                          <div className="text-gray-400 text-sm">{interview.date}</div>
-                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-white font-medium">{interview.company}</div>
+                            {interview.isNew && !interview.isEmpty && (
+                            <Badge className="bg-gray-700/50 text-gray-300 border-gray-600 text-xs">New</Badge>
+                          )}
+                        </div>
+                        <div className="text-gray-400 text-sm">{interview.date}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
                         {interview.isEmpty || interview.status === null ? (
                           <span className="text-gray-500">—</span>
                         ) : (
                           <>
-                            <Badge variant="secondary" className="bg-gray-700/50 text-gray-300 border-gray-600">
-                              {interview.status}
-                            </Badge>
+                      <Badge variant="secondary" className="bg-gray-700/50 text-gray-300 border-gray-600">
+                        {interview.status}
+                      </Badge>
                             <Link href="/history">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-gray-300 hover:text-white hover:bg-gray-700/50"
-                              >
-                                View Analysis
-                              </Button>
-                            </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-gray-300 hover:text-white hover:bg-gray-700/50"
+                          >
+                            View Analysis
+                          </Button>
+                        </Link>
                           </>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
               )}
             </CardContent>
           </Card>
