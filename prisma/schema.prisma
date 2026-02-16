@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+model users {
   id               String            @id @default(cuid())
   email            String            @unique
   password         String
@@ -16,27 +16,27 @@ model User {
   verificationCode String?
   codeExpiresAt    DateTime?
   createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  analyses         AnalysisHistory[]
-
-  @@map("users")
+  updatedAt        DateTime          @default(now())
+  analyses         analysis_history[]
 }
 
-model AnalysisHistory {
+model analysis_history {
   id                String   @id @default(cuid())
   userId            String
   videoName         String
   videoFileName     String
   
-  // Gesture Analysis Scores (1-7 scale)
+  // Gesture Analysis Scores (1-10 scale)
   handsOnTable      Float?
   hiddenHands       Float?
   gestureOnTable    Float?
   selfTouch         Float?
-  otherGestures     Float?
   
-  // Facial Analysis Score (1-7 scale)
+  // Facial Analysis Score (1-10 scale)
   smileScore        Float?
+  
+  // Final Score
+  finalScore        Float?
   
   // Processing Metadata
   gestureFrames     Int?
@@ -47,9 +47,8 @@ model AnalysisHistory {
   
   createdAt         DateTime @default(now())
   
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              users     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@index([userId])
   @@index([createdAt])
-  @@map("analysis_history")
 }

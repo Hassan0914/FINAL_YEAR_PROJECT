@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
 import { prisma } from "@/lib/db"
-import { sendVerificationEmail } from "@/lib/email"
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,8 +46,7 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim()
 
     // Case 1: Check if email already exists
-    console.log('[Signup] Checking if email exists in database...')
-    const existingUser = await prisma.user.findUnique({
+    const existingUser = await prisma.users.findUnique({
       where: {
         email: normalizedEmail,
       },
@@ -74,48 +72,54 @@ export async function POST(request: NextRequest) {
     console.log('[Signup] Hashing password...')
     const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Store user in database with verified = false
+    // Generate user ID
+    const userId = crypto.randomUUID()
+
+    // Store user in database with verified = false (requires email verification)
     console.log('[Signup] Creating user in database...')
-    const user = await prisma.user.create({
+    const user = await prisma.users.create({
       data: {
+        id: userId,
         email: normalizedEmail,
         password: hashedPassword,
         name: name ? name.trim() : null,
-        isVerified: false,
+        isVerified: false, // User must verify email
         verificationCode,
         codeExpiresAt,
+        updatedAt: new Date(),
       },
     })
     console.log('[Signup] User created successfully, ID:', user.id)
 
     // Send verification email
     console.log('[Signup] Sending verification email...')
+    const { sendVerificationEmail } = await import('@/lib/email')
     const emailResult = await sendVerificationEmail(normalizedEmail, verificationCode)
 
     // Check if we're in development mode (no email credentials)
     const isDevelopment = !process.env.EMAIL_USER || !process.env.EMAIL_PASS
     
     console.log('[Signup] Signup completed successfully. Development mode:', isDevelopment)
+    if (isDevelopment) {
+      console.log('[Signup] 🔐 DEV MODE - Verification Code:', verificationCode)
+    }
 
     return NextResponse.json(
       {
         success: true,
         message: isDevelopment 
-          ? `Account created! Check your email. If dev mode, use the code shown in the server logs.`
+          ? `Account created! Verification code: ${verificationCode} (Dev mode - check console)`
           : "Account created! Please check your email for the 6-digit verification code.",
         errorType: "signup_success",
         userId: user.id,
-        requiresVerification: true
+        requiresVerification: true,
+        devCode: isDevelopment ? verificationCode : undefined, // Only send in dev mode
       },
       { status: 201 },
     )
   } catch (error) {
-    console.error("[Signup] Critical error:", error)
-    console.error("[Signup] Error details:", {
-      name: error instanceof Error ? error.name : 'Unknown',
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    })
+    console.error("Signup error:", error)
+    console.error("Error details:", error instanceof Error ? error.stack : error)
     
     // Handle Prisma unique constraint errors
     if (error instanceof Error && error.message.includes('Unique constraint')) {
@@ -126,19 +130,46 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
     
-    // Check for database connection errors
-    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('connect'))) {
+    // Handle Prisma authentication errors (P1000)
+    if (error instanceof Error && (error.message.includes('P1000') || error.message.includes('Authentication failed'))) {
       return NextResponse.json({ 
-        error: "Database connection failed",
-        errorType: "db_error",
-        message: "Unable to connect to the database. Please check your database connection."
+        error: "Database authentication failed",
+        errorType: "database_error",
+        message: "Database credentials are invalid. Please check your PostgreSQL username and password."
       }, { status: 503 })
+    }
+    
+    // Handle Prisma connection errors (P1001)
+    if (error instanceof Error && (error.message.includes('P1001') || error.message.includes('connect') || error.message.includes('ECONNREFUSED'))) {
+      return NextResponse.json({ 
+        error: "Database connection error",
+        errorType: "database_error",
+        message: "Unable to connect to database. Please ensure PostgreSQL is running and DATABASE_URL is correct."
+      }, { status: 503 })
+    }
+    
+    // Handle Prisma query errors
+    if (error instanceof Error && error.message.includes('P2002')) {
+      return NextResponse.json({ 
+        error: "Email already exists",
+        errorType: "email_exists",
+        message: "An account with this email already exists. Please use a different email or try logging in."
+      }, { status: 409 })
+    }
+    
+    // Handle JSON parsing errors
+    if (error instanceof Error && (error.message.includes('JSON') || error.message.includes('Unexpected token'))) {
+      return NextResponse.json({ 
+        error: "Invalid request format",
+        errorType: "validation",
+        message: "Invalid request data. Please check your input."
+      }, { status: 400 })
     }
     
     return NextResponse.json({ 
       error: "Internal server error",
       errorType: "server_error",
-      message: "Something went wrong. Please try again later."
+      message: error instanceof Error ? error.message : "Something went wrong. Please try again later."
     }, { status: 500 })
   }
 }

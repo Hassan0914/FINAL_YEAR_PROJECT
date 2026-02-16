@@ -3,280 +3,316 @@ import jsPDF from 'jspdf'
 
 export async function POST(request: NextRequest) {
   try {
-    const { gestureScores, frameCount, landmarksSummary, voiceConfidence } = await request.json()
+    const { 
+      gestureScores, 
+      overallScore, 
+      frameCount, 
+      facialAnalysis, 
+      landmarksSummary, 
+      voiceConfidence,
+      previousOverallScore,
+      analysisCount
+    } = await request.json()
     
-    // Create new PDF document with landscape orientation for better layout
-    const doc = new jsPDF('landscape', 'mm', 'a4')
+    // Create new PDF document
+    const doc = new jsPDF('portrait', 'mm', 'a4')
     
-    // Set up colors and fonts
-    const primaryColor = [40, 40, 40]
-    const secondaryColor = [100, 100, 100]
-    const accentColor = [59, 130, 246] // Blue accent
-    const successColor = [34, 197, 94] // Green
-    const warningColor = [245, 158, 11] // Orange
+    // Page dimensions
+    const pageWidth = 210
+    const pageHeight = 297
+    const margin = 15
+    const contentWidth = pageWidth - (margin * 2)
     
-    // Background gradient effect (simulated with rectangles)
-    doc.setFillColor(15, 15, 15) // Dark background
-    doc.rect(0, 0, 297, 210, 'F')
+    // Dashboard theme colors (exact match)
+    const bgDark = [17, 24, 39] // bg-gray-900
+    const cardBg = [31, 41, 55] // bg-gray-900/50
+    const borderGray = [75, 85, 99] // border-gray-700/50
+    const textPrimary = [255, 255, 255] // text-white
+    const textSecondary = [209, 213, 219] // text-gray-300
+    const textMuted = [156, 163, 175] // text-gray-400
+    const successGreen = [34, 197, 94] // text-green-400
+    const dangerRed = [239, 68, 68] // text-red-400
     
-    // Header section with gradient background
-    doc.setFillColor(30, 30, 30)
-    doc.roundedRect(10, 10, 277, 40, 5, 5, 'F')
+    // ============================================
+    // PAGE BACKGROUND (matching dashboard gradient)
+    // ============================================
+    doc.setFillColor(bgDark[0], bgDark[1], bgDark[2])
+    doc.rect(0, 0, pageWidth, pageHeight, 'F')
     
-    // Title with gradient text effect
+    // Subtle gradient overlay
+    doc.setFillColor(31, 41, 55)
+    doc.setGState(doc.GState({ opacity: 0.3 }))
+    doc.rect(0, 0, pageWidth, pageHeight, 'F')
+    doc.setGState(doc.GState({ opacity: 1 }))
+    
+    let currentY = margin
+    
+    // ============================================
+    // HEADER (matching dashboard)
+    // ============================================
     doc.setFontSize(24)
-    doc.setTextColor(255, 255, 255)
+    doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
     doc.setFont('helvetica', 'bold')
-    doc.text('InterviewAI Dashboard Report', 20, 30)
+    doc.text('InterviewAI Dashboard Report', margin, currentY)
     
-    // Subtitle
-    doc.setFontSize(12)
-    doc.setTextColor(200, 200, 200)
+    doc.setFontSize(11)
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
     doc.setFont('helvetica', 'normal')
-    doc.text('AI-Powered Gesture Analysis & Performance Analytics', 20, 38)
+    doc.text('Track your interview performance and identify areas for improvement', margin, currentY + 7)
     
-    // Date and time
-    doc.setFontSize(10)
-    doc.setTextColor(150, 150, 150)
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 200, 38)
+    currentY += 20
     
-    // Key Metrics Section (matching dashboard cards)
-    const metricsY = 60
-    const cardWidth = 50
-    const cardHeight = 25
-    const cardSpacing = 10
+    // ============================================
+    // KEY METRICS (4 cards matching dashboard)
+    // ============================================
+    const cardWidth = (contentWidth - 18) / 4 // 4 cards with gaps
+    const cardHeight = 35
     
-    // Overall Score Card
-    doc.setFillColor(45, 45, 45)
-    doc.roundedRect(20, metricsY, cardWidth, cardHeight, 3, 3, 'F')
-    doc.setDrawColor(100, 100, 100)
-    doc.roundedRect(20, metricsY, cardWidth, cardHeight, 3, 3, 'S')
+    // Card 1: Overall Score
+    doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+    doc.roundedRect(margin, currentY, cardWidth, cardHeight, 4, 4, 'F')
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.roundedRect(margin, currentY, cardWidth, cardHeight, 4, 4, 'S')
     
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
-    doc.text('Overall Score', 25, metricsY + 8)
-    
-    const overallScore = Math.round(Object.values(gestureScores).reduce((sum, score) => sum + score, 0) / 5)
-    doc.setFontSize(18)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${overallScore}/7`, 25, metricsY + 18)
-    
-    // Hand Visibility Card
-    doc.setFillColor(45, 45, 45)
-    doc.roundedRect(80, metricsY, cardWidth, cardHeight, 3, 3, 'F')
-    doc.setDrawColor(100, 100, 100)
-    doc.roundedRect(80, metricsY, cardWidth, cardHeight, 3, 3, 'S')
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
-    doc.text('Hand Visibility', 85, metricsY + 8)
-    
-    const handVisibility = Math.max(1, 8 - gestureScores.hidden_hands)
-    doc.setFontSize(18)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${handVisibility}/7`, 85, metricsY + 18)
-    
-    // Gesture Usage Card
-    doc.setFillColor(45, 45, 45)
-    doc.roundedRect(140, metricsY, cardWidth, cardHeight, 3, 3, 'F')
-    doc.setDrawColor(100, 100, 100)
-    doc.roundedRect(140, metricsY, cardWidth, cardHeight, 3, 3, 'S')
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
-    doc.text('Gesture Usage', 145, metricsY + 8)
-    
-    const gestureUsage = gestureScores.gestures_on_table
-    doc.setFontSize(18)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${gestureUsage}/7`, 145, metricsY + 18)
-    
-    // Analysis Card
-    doc.setFillColor(45, 45, 45)
-    doc.roundedRect(200, metricsY, cardWidth, cardHeight, 3, 3, 'F')
-    doc.setDrawColor(100, 100, 100)
-    doc.roundedRect(200, metricsY, cardWidth, cardHeight, 3, 3, 'S')
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
-    doc.text('Frames Processed', 205, metricsY + 8)
+    doc.setFontSize(9)
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text('Overall Score', margin + 8, currentY + 8)
     
     doc.setFontSize(18)
-    doc.setTextColor(255, 255, 255)
+    doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
     doc.setFont('helvetica', 'bold')
-    doc.text(frameCount.toString(), 205, metricsY + 18)
+    doc.text(overallScore !== null && overallScore !== undefined ? `${overallScore.toFixed(1)}/10` : '—', margin + 8, currentY + 20)
     
-    // Gesture Analysis Results Section
-    const resultsY = 100
-    
-    // Section header
-    doc.setFillColor(40, 40, 40)
-    doc.roundedRect(20, resultsY, 257, 30, 5, 5, 'F')
-    
-    doc.setFontSize(16)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Gesture Analysis Results', 30, resultsY + 12)
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
+    doc.setFontSize(7)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
     doc.setFont('helvetica', 'normal')
-    doc.text('AI-powered analysis of your interview gestures and body language (1-7 scale)', 30, resultsY + 20)
+    doc.text(overallScore !== null ? 'Latest analysis' : 'No analysis yet', margin + 8, currentY + 28)
     
-    // Gesture score cards in a row
-    const gestureTypes = [
-      { key: 'hidden_hands', label: 'Hidden Hands', description: 'Hands not visible' },
-      { key: 'hands_on_table', label: 'Hands on Table', description: 'Resting on table' },
-      { key: 'gestures_on_table', label: 'Gestures on Table', description: 'Gesturing near table' },
-      { key: 'self_touch', label: 'Self Touch', description: 'Touching face/body' }
-    ]
+    // Card 2: Improvement from Last Interview
+    const card2X = margin + cardWidth + 6
+    doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+    doc.roundedRect(card2X, currentY, cardWidth, cardHeight, 4, 4, 'F')
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.roundedRect(card2X, currentY, cardWidth, cardHeight, 4, 4, 'S')
     
-    const cardY = resultsY + 40
-    const gestureCardWidth = 45
-    const gestureCardHeight = 35
-    const gestureCardSpacing = 5
-    
-    gestureTypes.forEach((gesture, index) => {
-      const score = gestureScores[gesture.key] || 0
-      const x = 20 + index * (gestureCardWidth + gestureCardSpacing)
-      
-      // Draw card background
-      doc.setFillColor(45, 45, 45)
-      doc.roundedRect(x, cardY, gestureCardWidth, gestureCardHeight, 3, 3, 'F')
-      
-      // Draw border
-      doc.setDrawColor(100, 100, 100)
-      doc.roundedRect(x, cardY, gestureCardWidth, gestureCardHeight, 3, 3, 'S')
-      
-      // Add content
-      doc.setFontSize(10)
-      doc.setTextColor(200, 200, 200)
-      doc.text(gesture.label, x + 5, cardY + 10)
-      
-      doc.setFontSize(20)
-      doc.setTextColor(255, 255, 255)
-      doc.setFont('helvetica', 'bold')
-      doc.text(`${score}/7`, x + 5, cardY + 22)
-      
-      doc.setFontSize(8)
-      doc.setTextColor(150, 150, 150)
-      doc.text(gesture.description, x + 5, cardY + 30)
-    })
-    
-    // Analysis Summary Section
-    const summaryY = 150
-    
-    // Section header
-    doc.setFillColor(40, 40, 40)
-    doc.roundedRect(20, summaryY, 257, 30, 5, 5, 'F')
-    
-    doc.setFontSize(16)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Analysis Summary', 30, summaryY + 12)
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
+    doc.setFontSize(9)
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
     doc.setFont('helvetica', 'normal')
-    doc.text('Detailed breakdown of your interview performance', 30, summaryY + 20)
+    doc.text('Improvement from', card2X + 8, currentY + 6)
+    doc.text('Last Interview', card2X + 8, currentY + 10)
     
-    // Summary cards
-    const summaryCards = [
-      { label: 'Total Frames', value: frameCount.toString(), color: [59, 130, 246] },
-      { label: 'Left Hand Detected', value: `${landmarksSummary?.left_hand_detected_frames || 0} frames`, color: [34, 197, 94] },
-      { label: 'Right Hand Detected', value: `${landmarksSummary?.right_hand_detected_frames || 0} frames`, color: [34, 197, 94] },
-      { label: 'Both Hands Detected', value: `${landmarksSummary?.both_hands_detected_frames || 0} frames`, color: [245, 158, 11] }
-    ]
-    
-    const summaryCardY = summaryY + 40
-    const summaryCardWidth = 60
-    const summaryCardHeight = 25
-    
-    summaryCards.forEach((card, index) => {
-      const x = 20 + index * (summaryCardWidth + 5)
-      
-      // Draw card background
-      doc.setFillColor(45, 45, 45)
-      doc.roundedRect(x, summaryCardY, summaryCardWidth, summaryCardHeight, 3, 3, 'F')
-      
-      // Draw colored border
-      doc.setDrawColor(card.color[0], card.color[1], card.color[2])
-      doc.roundedRect(x, summaryCardY, summaryCardWidth, summaryCardHeight, 3, 3, 'S')
-      
-      // Add content
-      doc.setFontSize(9)
-      doc.setTextColor(200, 200, 200)
-      doc.text(card.label, x + 5, summaryCardY + 8)
-      
-      doc.setFontSize(12)
-      doc.setTextColor(255, 255, 255)
-      doc.setFont('helvetica', 'bold')
-      doc.text(card.value, x + 5, summaryCardY + 18)
-    })
-    
-    // Recommendations Section
-    const recommendationsY = summaryCardY + 40
-    
-    // Section header
-    doc.setFillColor(40, 40, 40)
-    doc.roundedRect(20, recommendationsY, 257, 30, 5, 5, 'F')
-    
-    doc.setFontSize(16)
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text('AI Recommendations', 30, recommendationsY + 12)
-    
-    doc.setFontSize(10)
-    doc.setTextColor(200, 200, 200)
-    doc.setFont('helvetica', 'normal')
-    doc.text('Personalized suggestions based on your gesture analysis', 30, recommendationsY + 20)
-    
-    // Generate recommendations
-    const recommendations = []
-    if (gestureScores.hidden_hands > 3) {
-      recommendations.push('🎯 Consider improving camera positioning to capture hands better')
+    let improvementText = '—'
+    let improvementColor = textPrimary
+    if (overallScore !== null && previousOverallScore !== null) {
+      const diff = overallScore - previousOverallScore
+      improvementText = `${diff > 0 ? '+' : diff < 0 ? '-' : ''}${Math.abs(diff).toFixed(1)}`
+      if (diff > 0) improvementColor = successGreen
+      else if (diff < 0) improvementColor = dangerRed
+    } else if (overallScore !== null) {
+      improvementText = 'First analysis'
+      improvementColor = textMuted
     }
-    if (gestureScores.hands_on_table > 3) {
-      recommendations.push('💡 Hands frequently on table - consider gesture variety')
-    }
-    if (gestureScores.gestures_on_table > 3) {
-      recommendations.push('✅ Good use of table gestures for emphasis')
+    
+    doc.setFontSize(18)
+    doc.setTextColor(improvementColor[0], improvementColor[1], improvementColor[2])
+    doc.setFont('helvetica', 'bold')
+    doc.text(improvementText, card2X + 8, currentY + 22)
+    
+    doc.setFontSize(7)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+    doc.setFont('helvetica', 'normal')
+    if (overallScore !== null && previousOverallScore !== null) {
+      doc.text(overallScore > previousOverallScore ? 'Improved from last' : overallScore < previousOverallScore ? 'Declined from last' : 'Same as last', card2X + 8, currentY + 28)
+    } else if (overallScore !== null) {
+      doc.text('No previous analysis', card2X + 8, currentY + 28)
     } else {
-      recommendations.push('🚀 Try incorporating more varied hand gestures')
-    }
-    if (gestureScores.self_touch > 3) {
-      recommendations.push('⚠️ High self-touch frequency - consider reducing for better presentation')
+      doc.text('No analysis yet', card2X + 8, currentY + 28)
     }
     
-    if (recommendations.length === 0) {
-      recommendations.push('🎉 Overall gesture patterns look balanced and professional')
-    }
+    // Card 3: Total Interviews
+    const card3X = margin + (cardWidth + 6) * 2
+    doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+    doc.roundedRect(card3X, currentY, cardWidth, cardHeight, 4, 4, 'F')
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.roundedRect(card3X, currentY, cardWidth, cardHeight, 4, 4, 'S')
     
-    // Draw recommendations
-    const recY = recommendationsY + 40
-    recommendations.forEach((rec, index) => {
-      // Draw recommendation card
-      doc.setFillColor(50, 50, 50)
-      doc.roundedRect(20, recY + (index * 15), 257, 12, 2, 2, 'F')
+    doc.setFontSize(9)
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text('Total Interviews', card3X + 8, currentY + 8)
+    
+    doc.setFontSize(18)
+    doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+    doc.setFont('helvetica', 'bold')
+    doc.text((analysisCount || 0).toString(), card3X + 8, currentY + 20)
+    
+    doc.setFontSize(7)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+    doc.setFont('helvetica', 'normal')
+    const interviewText = analysisCount === 0 ? 'No analyses yet' : analysisCount === 1 ? 'Analysis completed' : 'Analyses completed'
+    doc.text(interviewText, card3X + 8, currentY + 28)
+    
+    // Card 4: Analysis (Frames)
+    const card4X = margin + (cardWidth + 6) * 3
+    doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+    doc.roundedRect(card4X, currentY, cardWidth, cardHeight, 4, 4, 'F')
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.roundedRect(card4X, currentY, cardWidth, cardHeight, 4, 4, 'S')
+    
+    doc.setFontSize(9)
+    doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text('Analysis', card4X + 8, currentY + 8)
+    
+    doc.setFontSize(18)
+    doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+    doc.setFont('helvetica', 'bold')
+    doc.text(frameCount?.toString() || '—', card4X + 8, currentY + 20)
+    
+    doc.setFontSize(7)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text(frameCount ? 'Frames processed' : 'No analysis yet', card4X + 8, currentY + 28)
+    
+    currentY += cardHeight + 20
+    
+    // ============================================
+    // GESTURE ANALYSIS RESULTS (matching dashboard)
+    // ============================================
+    doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+    doc.roundedRect(margin, currentY, contentWidth, 50, 4, 4, 'F')
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.roundedRect(margin, currentY, contentWidth, 50, 4, 4, 'S')
+    
+    // Header
+    doc.setFontSize(14)
+    doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+    doc.setFont('helvetica', 'bold')
+    doc.text('Gesture Analysis Results', margin + 10, currentY + 10)
+    
+    doc.setFontSize(9)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text('AI-powered analysis of your interview gestures and body language (1-10 scale)', margin + 10, currentY + 16)
+    
+    // 4 gesture scores in a grid
+    const gestureCardWidth = (contentWidth - 30) / 4
+    const gestureCardX = margin + 10
+    const gestureCardY = currentY + 22
+    
+    const gestures = [
+      { key: 'hidden_hands', label: 'Hidden Hands', desc: 'Hands not visible' },
+      { key: 'hands_on_table', label: 'Hands on Table', desc: 'Resting on table' },
+      { key: 'gestures_on_table', label: 'Gestures on Table', desc: 'Gesturing near table' },
+      { key: 'self_touch', label: 'Self Touch', desc: 'Touching face/body' }
+    ]
+    
+    gestures.forEach((gesture, index) => {
+      const x = gestureCardX + index * (gestureCardWidth + 6)
+      const score = gestureScores?.[gesture.key] || 0
       
-      doc.setFontSize(10)
-      doc.setTextColor(255, 255, 255)
+      // Score
+      doc.setFontSize(16)
+      doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${score.toFixed(2)}/10`, x, gestureCardY + 8, { align: 'center' })
+      
+      // Label
+      doc.setFontSize(9)
+      doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
       doc.setFont('helvetica', 'normal')
-      doc.text(rec, 25, recY + 8 + (index * 15))
+      doc.text(gesture.label, x, gestureCardY + 14, { align: 'center' })
+      
+      // Description
+      doc.setFontSize(7)
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text(gesture.desc, x, gestureCardY + 20, { align: 'center' })
     })
     
-    // Footer with branding
-    const footerY = 190
-    doc.setFillColor(20, 20, 20)
-    doc.roundedRect(10, footerY, 277, 15, 3, 3, 'F')
+    currentY += 50 + 15
+    
+    // ============================================
+    // FACIAL EXPRESSION ANALYSIS (if available)
+    // ============================================
+    if (facialAnalysis?.smile_score !== null && facialAnalysis?.smile_score !== undefined) {
+      doc.setFillColor(cardBg[0], cardBg[1], cardBg[2])
+      doc.roundedRect(margin, currentY, contentWidth, 45, 4, 4, 'F')
+      doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+      doc.setLineWidth(0.5)
+      doc.roundedRect(margin, currentY, contentWidth, 45, 4, 4, 'S')
+      
+      // Header
+      doc.setFontSize(14)
+      doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+      doc.setFont('helvetica', 'bold')
+      doc.text('Facial Expression Analysis', margin + 10, currentY + 10)
+      
+      doc.setFontSize(9)
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text('AI-powered analysis of your facial expressions and engagement (1-10 scale)', margin + 10, currentY + 16)
+      
+      // 2 columns
+      const facialCardWidth = (contentWidth - 30) / 2
+      const facialCardX = margin + 10
+      const facialCardY = currentY + 22
+      
+      // Smile Score
+      doc.setFontSize(18)
+      doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${facialAnalysis.smile_score.toFixed(2)}/10`, facialCardX, facialCardY + 8, { align: 'center' })
+      
+      doc.setFontSize(9)
+      doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text('Smile Score', facialCardX, facialCardY + 14, { align: 'center' })
+      
+      doc.setFontSize(7)
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text('Engagement level', facialCardX, facialCardY + 20, { align: 'center' })
+      
+      // Processing Time
+      const processingTime = facialAnalysis.processing_time || 0
+      doc.setFontSize(18)
+      doc.setTextColor(textPrimary[0], textPrimary[1], textPrimary[2])
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${processingTime.toFixed(2)}s`, facialCardX + facialCardWidth + 6, facialCardY + 8, { align: 'center' })
+      
+      doc.setFontSize(9)
+      doc.setTextColor(textSecondary[0], textSecondary[1], textSecondary[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text('Processing Time', facialCardX + facialCardWidth + 6, facialCardY + 14, { align: 'center' })
+      
+      doc.setFontSize(7)
+      doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+      doc.setFont('helvetica', 'normal')
+      doc.text('Analysis duration', facialCardX + facialCardWidth + 6, facialCardY + 20, { align: 'center' })
+      
+      currentY += 45 + 15
+    }
+    
+    // ============================================
+    // FOOTER
+    // ============================================
+    const footerY = pageHeight - 12
+    doc.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    doc.setLineWidth(0.5)
+    doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3)
     
     doc.setFontSize(8)
-    doc.setTextColor(150, 150, 150)
-    doc.text('Generated by InterviewAI Dashboard', 20, footerY + 8)
-    doc.text(`Report ID: ${Date.now().toString(36).toUpperCase()}`, 200, footerY + 8)
+    doc.setTextColor(textMuted[0], textMuted[1], textMuted[2])
+    doc.setFont('helvetica', 'normal')
+    doc.text('Generated by InterviewAI Dashboard', margin, footerY)
+    doc.text(`Report ID: ${Date.now().toString(36).toUpperCase()}`, pageWidth - margin, footerY, { align: 'right' })
     
     // Convert to buffer
     const pdfBuffer = doc.output('arraybuffer')
@@ -284,7 +320,7 @@ export async function POST(request: NextRequest) {
     return new NextResponse(pdfBuffer, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="gesture-analysis-report.pdf"',
+        'Content-Disposition': 'attachment; filename="interview-analysis-report.pdf"',
       },
     })
     

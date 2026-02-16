@@ -10,17 +10,19 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        jwtToken: { label: "JWT Token", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password required")
+        // Allow either password OR jwtToken for authentication
+        if (!credentials?.email || (!credentials?.password && !credentials?.jwtToken)) {
+          throw new Error("Email and password (or token) required")
         }
 
         try {
           const normalizedEmail = credentials.email.toLowerCase().trim()
           console.log("Attempting login for email:", normalizedEmail)
           
-          const user = await prisma.user.findUnique({
+          const user = await prisma.users.findUnique({
             where: {
               email: normalizedEmail,
             },
@@ -31,6 +33,25 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Email not registered")
           }
 
+          // If JWT token is provided (for post-verification auto-login), verify it
+          if (credentials.jwtToken) {
+            const { verifyToken } = await import("./jwt")
+            const decoded = verifyToken(credentials.jwtToken)
+            
+            if (!decoded || decoded.id !== user.id || decoded.email !== user.email) {
+              console.log("JWT token validation failed")
+              throw new Error("Invalid token")
+            }
+            
+            console.log("JWT token validated, login successful for user:", user.email)
+            return {
+              id: user.id,
+              email: user.email,
+              name: user.name,
+            }
+          }
+
+          // Otherwise, validate password
           console.log("User found, checking password...")
           const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
 
@@ -39,6 +60,7 @@ export const authOptions: NextAuthOptions = {
             throw new Error("Invalid password")
           }
 
+          // No email verification check - users are auto-verified on signup
           console.log("Login successful for user:", user.email)
           return {
             id: user.id,

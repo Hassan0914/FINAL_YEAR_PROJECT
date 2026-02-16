@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim()
 
     // Find user
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: {
         email: normalizedEmail,
       },
@@ -36,20 +36,7 @@ export async function POST(request: NextRequest) {
       }, { status: 404 })
     }
 
-    // Case 2: Email exists but not verified
-    if (!user.isVerified) {
-      return NextResponse.json(
-        { 
-          error: "Email not verified",
-          errorType: "email_not_verified",
-          message: "Please verify your email before logging in.",
-          canResendVerification: true
-        },
-        { status: 400 }
-      )
-    }
-
-  // Case 3: Email verified, now check password
+    // Case 2: Check password (email verification check removed)
   // Debugging: ensure user object has expected fields
   console.log('Found user for login:', { id: user?.id, email: user?.email, hasPassword: Boolean(user?.password) })
   const isPasswordValid = await bcrypt.compare(password, user.password)
@@ -62,7 +49,7 @@ export async function POST(request: NextRequest) {
       }, { status: 401 })
     }
 
-    // Case 4: Email verified and password correct - SUCCESS
+    // Case 3: Password correct - SUCCESS (no email verification required)
     const token = signToken({
       id: user.id,
       email: user.email,
@@ -84,10 +71,48 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("Login error:", error)
+    console.error("Error details:", error instanceof Error ? error.stack : error)
+    
+    // Handle Prisma authentication errors (P1000)
+    if (error instanceof Error && (error.message.includes('P1000') || error.message.includes('Authentication failed'))) {
+      return NextResponse.json({ 
+        error: "Database authentication failed",
+        errorType: "database_error",
+        message: "Database credentials are invalid. Please check your PostgreSQL username and password."
+      }, { status: 503 })
+    }
+    
+    // Handle Prisma connection errors (P1001)
+    if (error instanceof Error && (error.message.includes('P1001') || error.message.includes('connect') || error.message.includes('ECONNREFUSED'))) {
+      return NextResponse.json({ 
+        error: "Database connection error",
+        errorType: "database_error",
+        message: "Unable to connect to database. Please ensure PostgreSQL is running and DATABASE_URL is correct."
+      }, { status: 503 })
+    }
+    
+    // Handle Prisma query errors
+    if (error instanceof Error && error.message.includes('P2002')) {
+      return NextResponse.json({ 
+        error: "Database constraint error",
+        errorType: "database_error",
+        message: "A database constraint was violated. Please try again."
+      }, { status: 409 })
+    }
+    
+    // Handle JSON parsing errors
+    if (error instanceof Error && (error.message.includes('JSON') || error.message.includes('Unexpected token'))) {
+      return NextResponse.json({ 
+        error: "Invalid request format",
+        errorType: "validation",
+        message: "Invalid request data. Please check your input."
+      }, { status: 400 })
+    }
+    
     return NextResponse.json({ 
       error: "Internal server error",
       errorType: "server_error",
-      message: "Something went wrong. Please try again later."
+      message: error instanceof Error ? error.message : "Something went wrong. Please try again later."
     }, { status: 500 })
   }
 }

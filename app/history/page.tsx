@@ -29,7 +29,6 @@ interface AnalysisHistory {
   hiddenHands: number | null
   gestureOnTable: number | null
   selfTouch: number | null
-  otherGestures: number | null
   // Facial Analysis Score
   smileScore: number | null
   // Processing Metadata
@@ -240,27 +239,27 @@ export default function HistoryPage() {
                           </h4>
                           <div className="grid grid-cols-2 gap-3">
                             <div className="bg-gray-800/30 p-3 rounded-lg">
-                              <div className="text-xs text-gray-400 mb-1">Hidden Hands</div>
-                              <div className="text-lg font-bold text-white">
-                                {formatScore(analysis.hiddenHands)}/7
-                              </div>
-                            </div>
-                            <div className="bg-gray-800/30 p-3 rounded-lg">
                               <div className="text-xs text-gray-400 mb-1">Hands on Table</div>
                               <div className="text-lg font-bold text-white">
-                                {formatScore(analysis.handsOnTable)}/7
+                                {formatScore(analysis.handsOnTable)}/10
                               </div>
                             </div>
                             <div className="bg-gray-800/30 p-3 rounded-lg">
-                              <div className="text-xs text-gray-400 mb-1">Gesture on Table</div>
+                              <div className="text-xs text-gray-400 mb-1">Hidden Hands</div>
                               <div className="text-lg font-bold text-white">
-                                {formatScore(analysis.gestureOnTable)}/7
+                                {formatScore(analysis.hiddenHands)}/10
                               </div>
                             </div>
                             <div className="bg-gray-800/30 p-3 rounded-lg">
                               <div className="text-xs text-gray-400 mb-1">Self Touch</div>
                               <div className="text-lg font-bold text-white">
-                                {formatScore(analysis.selfTouch)}/7
+                                {formatScore(analysis.selfTouch)}/10
+                              </div>
+                            </div>
+                            <div className="bg-gray-800/30 p-3 rounded-lg">
+                              <div className="text-xs text-gray-400 mb-1">Gestures on Table</div>
+                              <div className="text-lg font-bold text-white">
+                                {formatScore(analysis.gestureOnTable)}/10
                               </div>
                             </div>
                           </div>
@@ -283,7 +282,9 @@ export default function HistoryPage() {
                             <div className="mb-3">
                               <div className="text-xs text-gray-400 mb-1">Smile Score</div>
                               <div className="text-3xl font-bold text-white">
-                                {formatScore(analysis.smileScore)}/7
+                                {analysis.smileScore !== null && analysis.smileScore !== undefined 
+                                  ? `${formatScore(analysis.smileScore)}/10` 
+                                  : '—'}
                               </div>
                             </div>
                             {analysis.facialFrames && (

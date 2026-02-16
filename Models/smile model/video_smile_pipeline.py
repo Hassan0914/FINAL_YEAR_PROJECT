@@ -14,18 +14,69 @@ import numpy as np
 import pandas as pd
 import joblib
 import cv2
+import sys
+
+# NumPy version compatibility workaround
+# If model was saved with NumPy 2.x but we have NumPy 1.x, create compatibility shim
+# This must be done BEFORE any joblib.load() calls
+if not hasattr(np, '_core'):
+    # Create comprehensive compatibility shim for numpy._core -> numpy.core
+    class NumpyCoreShim:
+        """Shim to map numpy._core to numpy.core for NumPy 1.x compatibility"""
+        def __getattr__(self, name):
+            if hasattr(np.core, name):
+                return getattr(np.core, name)
+            # Fallback for nested attributes
+            if name == 'multiarray':
+                return np.core.multiarray
+            if name == 'umath':
+                return np.core.umath
+            raise AttributeError(f"module 'numpy._core' has no attribute '{name}'")
+    
+    # Add to sys.modules BEFORE any imports that might use it
+    if 'numpy._core' not in sys.modules:
+        sys.modules['numpy._core'] = NumpyCoreShim()
+    if 'numpy._core.multiarray' not in sys.modules:
+        sys.modules['numpy._core.multiarray'] = np.core.multiarray
+    if 'numpy._core.umath' not in sys.modules:
+        sys.modules['numpy._core.umath'] = np.core.umath
+    # Also handle _core._internal
+    if 'numpy._core._internal' not in sys.modules:
+        try:
+            sys.modules['numpy._core._internal'] = sys.modules.get('numpy.core._internal', type(sys)('numpy._core._internal'))
+        except:
+            pass
 
 # ============================================================
-# LOAD TRAINED MODEL
+# LOAD TRAINED MODEL (Lazy Loading)
 # ============================================================
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "smile_model.joblib")
-artifacts = joblib.load(MODEL_PATH)
-model = artifacts['model']
-scaler = artifacts['scaler']
-feature_cols = artifacts['feature_cols']
+artifacts = None
+model = None
+scaler = None
+feature_cols = None
 
-print(f"Model loaded. R² Score: {artifacts['r2_score']:.4f}")
+def _load_model():
+    """Lazy load the model - only load when needed"""
+    global artifacts, model, scaler, feature_cols
+    if artifacts is None:
+        try:
+            artifacts = joblib.load(MODEL_PATH)
+            model = artifacts['model']
+            scaler = artifacts['scaler']
+            feature_cols = artifacts['feature_cols']
+            print(f"Model loaded. R² Score: {artifacts['r2_score']:.4f}")
+        except ModuleNotFoundError as e:
+            if 'numpy._core' in str(e):
+                raise ImportError(
+                    "NumPy version mismatch: The smile model was saved with NumPy 2.x, but your environment has NumPy 1.x. "
+                    "Please either:\n"
+                    "1. Upgrade to NumPy 2.x (may conflict with TensorFlow/MediaPipe), OR\n"
+                    "2. Re-save the model with NumPy 1.x"
+                ) from e
+            raise
+    return model, scaler, feature_cols
 
 
 # ============================================================
@@ -254,6 +305,8 @@ def process_uploaded_video(video_path, sample_rate=3):
     
     # Step 4: Predict smile score
     print(f"\n[4/4] Predicting smile score...")
+    # Load model if not already loaded
+    model, scaler, feature_cols = _load_model()
     X = np.array([[stats.get(col, 0) for col in feature_cols]])
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     X_scaled = scaler.transform(X)

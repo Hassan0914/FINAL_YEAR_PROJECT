@@ -18,12 +18,21 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
+  const [successMessage, setSuccessMessage] = useState("")
   const { login, isLoading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
   
   // Get callback URL from query parameters
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const verified = searchParams.get('verified') === 'true'
+  
+  // Show success message if redirected after verification
+  useEffect(() => {
+    if (verified) {
+      setSuccessMessage("Email verified successfully! Please log in with your password.")
+    }
+  }, [verified])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,6 +69,11 @@ export default function LoginPage() {
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
+            {successMessage && (
+              <Alert className="bg-green-50 border-green-200 text-green-800">
+                <AlertDescription>{successMessage}</AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>

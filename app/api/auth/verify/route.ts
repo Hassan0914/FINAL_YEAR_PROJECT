@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim()
 
     // Find user
-    const user = await prisma.user.findUnique({
+    const user = await prisma.users.findUnique({
       where: {
         email: normalizedEmail,
       },
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Case 1: Correct code
     if (user.verificationCode === code) {
       // Update user account's verified field to true
-      const updatedUser = await prisma.user.update({
+      const updatedUser = await prisma.users.update({
         where: { id: user.id },
         data: {
           isVerified: true,
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          message: "Email verified successfully! Redirecting to upload page...",
+          message: "Email verified successfully! Redirecting to dashboard...",
           errorType: "verification_success",
           token,
           user: {
