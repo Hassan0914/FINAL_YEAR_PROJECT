@@ -1,0 +1,74 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fyp-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12345
+      POSTGRES_DB: fyp_database
+    ports:
+      - "5433:5432"  # Using 5433 externally since local PostgreSQL uses 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fyp-network
+
+  # Backend API (Python FastAPI)
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: fyp-backend
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres:5432/fyp_database
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../Models:/app/Models
+      - ../uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - fyp-network
+    restart: unless-stopped
+
+  # Frontend (Next.js)
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: fyp-frontend
+    environment:
+      - DATABASE_URL=postgresql://postgres:12345@postgres:5432/fyp_database
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-your-secret-key-change-this}
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-this}
+      - UNIFIED_API_URL=http://backend:8000
+      - EMAIL_USER=${EMAIL_USER:-}
+      - EMAIL_PASS=${EMAIL_PASS:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - fyp-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  fyp-network:
+    driver: bridge
+

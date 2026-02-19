@@ -1,0 +1,78 @@
+# Dependencies (keeping node_modules for pre-built Docker approach)
+# node_modules  -- needed for pre-built copy
+npm-debug.log
+pnpm-debug.log
+yarn-error.log
+.pnp
+.pnp.js
+
+# Testing
+coverage
+.nyc_output
+
+# Next.js (keeping .next for pre-built Docker approach)
+# .next  -- needed for pre-built copy
+out
+build
+dist
+
+# Production
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+mediapipe_env_311/
+*.egg-info/
+.pytest_cache/
+
+# Model files (keep these, they're needed)
+# But ignore large cache files
+*.cache
+*.tmp
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Documentation
+*.md
+!README.md
+
+# Scripts (optional, keep if needed)
+scripts/
+
+# Uploads (will be mounted as volume)
+uploads/*.avi
+uploads/*.mp4
+uploads/*.mov
+
