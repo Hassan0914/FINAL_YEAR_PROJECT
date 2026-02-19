@@ -15,10 +15,11 @@ from tensorflow import keras
 _MODEL_DIR = os.path.dirname(__file__)
 _PARENT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(_MODEL_DIR)))  # Go up to C:\FRONTEND
 
-# Check for .keras file first (ONLY the correct model, no fallbacks)
+# Check for model files - prefer legacy H5 format (cross-platform compatible)
 _MODEL_CANDIDATES = [
-    os.path.join(_MODEL_DIR, 'bilstm_epoch_15.keras'),
-    os.path.join(_PARENT_DIR, 'bilstm_epoch_15.keras'),  # Check C:\FRONTEND
+    os.path.join(_MODEL_DIR, 'bilstm_epoch_15.h5'),       # Legacy H5 (works on Linux + Windows)
+    os.path.join(_MODEL_DIR, 'bilstm_epoch_15.keras'),     # New .keras format
+    os.path.join(_PARENT_DIR, 'bilstm_epoch_15.keras'),    # Check C:\FRONTEND
 ]
 
 MODEL_PATH = None
@@ -68,48 +69,32 @@ class GesturePredictor:
             if MODEL_PATH and os.path.exists(MODEL_PATH):
                 model_path = MODEL_PATH
             elif MODEL_CONFIG_PATH and MODEL_WEIGHTS_PATH:
-                # Load from config + weights (from bilstm_epoch_15.keras.zip)
-                import json
-                print(f"Loading model from config + weights...")
-                with open(MODEL_CONFIG_PATH, 'r') as f:
-                    config_data = json.load(f)
+                # Load from config + weights by reconstructing .keras zip file
+                # The .keras format is a zip containing config.json + model.weights.h5
+                import zipfile
+                import tempfile
                 
-                # The config.json structure: {"module": "keras", "class_name": "Sequential", "config": {...}, "compile_config": {...}}
-                # Extract the Sequential model config from "config" key
-                model_config = config_data.get('config', {})
+                print(f"Reconstructing .keras file from config + weights...")
                 
-                # Reconstruct Sequential model from config
-                # The model_config contains {"name": "sequential", "layers": [...]}
-                from tensorflow.keras.models import Sequential
-                self.model = Sequential.from_config(model_config)
+                # Create a temporary .keras file (which is just a zip)
+                temp_keras_path = os.path.join(os.path.dirname(MODEL_CONFIG_PATH), '_temp_model.keras')
                 
-                # Load weights
-                print(f"Loading weights from: {MODEL_WEIGHTS_PATH}")
-                self.model.load_weights(MODEL_WEIGHTS_PATH)
+                with zipfile.ZipFile(temp_keras_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    zf.write(MODEL_CONFIG_PATH, 'config.json')
+                    zf.write(MODEL_WEIGHTS_PATH, 'model.weights.h5')
+                    # Also include metadata.json if it exists
+                    metadata_path = os.path.join(os.path.dirname(MODEL_CONFIG_PATH), 'metadata.json')
+                    if os.path.exists(metadata_path):
+                        zf.write(metadata_path, 'metadata.json')
                 
-                # Compile the model (needed for prediction)
-                from tensorflow.keras.optimizers import Adam
-                compile_config = config_data.get('compile_config', {})
-                if compile_config:
-                    optimizer_config = compile_config.get('optimizer', {})
-                    if isinstance(optimizer_config, dict) and 'config' in optimizer_config:
-                        opt_config = optimizer_config['config']
-                        learning_rate = opt_config.get('learning_rate', 0.0005)
-                    else:
-                        learning_rate = 0.0005
-                    
-                    self.model.compile(
-                        optimizer=Adam(learning_rate=learning_rate),
-                        loss=compile_config.get('loss', 'sparse_categorical_crossentropy'),
-                        metrics=compile_config.get('metrics', ['accuracy'])
-                    )
-                else:
-                    # Default compilation if compile_config not found
-                    self.model.compile(
-                        optimizer=Adam(learning_rate=0.0005),
-                        loss='sparse_categorical_crossentropy',
-                        metrics=['accuracy']
-                    )
+                print(f"Loading model from reconstructed .keras file...")
+                self.model = keras.models.load_model(temp_keras_path)
+                
+                # Clean up temp file
+                try:
+                    os.remove(temp_keras_path)
+                except:
+                    pass
                 
                 # Validate model shape
                 model_input_shape = self.model.input_shape
@@ -124,7 +109,7 @@ class GesturePredictor:
                         f"  Code expects: ({SEQUENCE_LENGTH}, {N_FEATURES})"
                     )
                 
-                print("Model loaded successfully from config + weights!")
+                print("Model loaded successfully from reconstructed .keras file!")
                 self.sequence_length = SEQUENCE_LENGTH
                 return
             else:

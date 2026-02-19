@@ -1,0 +1,64 @@
+# Backend Dockerfile (Python FastAPI)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip for better retry/timeout handling
+RUN pip install --upgrade pip
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Step 1: Install small/core packages (fast, rarely fails)
+RUN pip install --timeout=1000 --retries=10 \
+    fastapi==0.104.1 \
+    "uvicorn[standard]==0.24.0" \
+    python-multipart==0.0.6 \
+    joblib==1.3.2 \
+    "python-jose[cryptography]==3.3.0" \
+    "passlib[bcrypt]==1.7.4" \
+    python-dotenv==1.0.0
+
+# Step 2: Install medium packages (numpy, pandas) - cached separately
+RUN pip install --timeout=1000 --retries=10 \
+    numpy==1.24.3 \
+    pandas==2.1.3
+
+# Step 3: Install heavy packages (opencv, mediapipe, scikit-learn) - these pull scipy, matplotlib etc.
+RUN pip install --timeout=1000 --retries=10 \
+    opencv-python==4.8.1.78 \
+    mediapipe==0.10.7 \
+    scikit-learn==1.3.2
+
+# Step 4: Install TensorFlow (largest package ~500MB) - separate layer so retries don't re-download above
+RUN pip install --timeout=1000 --retries=10 tensorflow==2.13.0
+
+# Install any remaining requirements (in case requirements.txt has additions)
+RUN pip install --timeout=1000 --retries=10 -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create uploads directory
+RUN mkdir -p uploads Models/gesture\ analysis\ model/uploads Models/smile\ model/uploads
+
+# Expose port
+EXPOSE 8000
+
+# Health check (using curl instead of requests)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8000/api/health || exit 1
+
+# Run the application
+CMD ["python", "unified_models_api.py"]

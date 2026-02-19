@@ -1,0 +1,45 @@
+-- Create users table with properly quoted camelCase column names
+CREATE TABLE "public"."users" (
+    "id" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "password" TEXT NOT NULL,
+    "name" TEXT,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "verificationCode" TEXT,
+    "codeExpiresAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX "users_email_key" ON "public"."users"("email");
+
+-- Create analysis_history table
+CREATE TABLE "public"."analysis_history" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "videoName" TEXT NOT NULL,
+    "videoFileName" TEXT NOT NULL,
+    "handsOnTable" DOUBLE PRECISION,
+    "hiddenHands" DOUBLE PRECISION,
+    "gestureOnTable" DOUBLE PRECISION,
+    "selfTouch" DOUBLE PRECISION,
+    "smileScore" DOUBLE PRECISION,
+    "finalScore" DOUBLE PRECISION,
+    "gestureFrames" INTEGER,
+    "facialFrames" INTEGER,
+    "processingTime" DOUBLE PRECISION,
+    "gestureSuccess" BOOLEAN NOT NULL DEFAULT false,
+    "facialSuccess" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "analysis_history_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "analysis_history_userId_idx" ON "public"."analysis_history"("userId");
+CREATE INDEX "analysis_history_createdAt_idx" ON "public"."analysis_history"("createdAt");
+
+ALTER TABLE "public"."analysis_history" ADD CONSTRAINT "analysis_history_userId_fkey" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+
+
+

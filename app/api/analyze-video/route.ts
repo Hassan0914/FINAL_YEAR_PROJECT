@@ -81,9 +81,8 @@ export async function POST(request: NextRequest) {
     const fetchStartTime = Date.now()
     
     // Use a custom fetch with extended timeout for long videos
-    // Node.js fetch has a default headers timeout of ~6 minutes, which is too short
-    // We'll use AbortController with a very long timeout, but the real issue is the headers timeout
-    // For now, we'll let it timeout and handle it gracefully
+    // Node.js fetch (undici) has a default headersTimeout of 300s (5 min) which is too short
+    // We create a custom undici Agent with extended timeouts to handle long video processing
     const controller = new AbortController()
     const timeoutId = setTimeout(() => {
       controller.abort()
@@ -91,11 +90,27 @@ export async function POST(request: NextRequest) {
     
     let response: Response
     try {
-      response = await fetch(`${UNIFIED_API_URL}/api/analyze-all`, {
+      // Configure extended timeout for Node.js undici fetch
+      // undici ships with Node.js 18+ as a built-in module
+      let fetchOptions: any = {
         method: 'POST',
         body: unifiedFormData,
         signal: controller.signal,
-      })
+      }
+      
+      try {
+        const undici = require('undici')
+        fetchOptions.dispatcher = new undici.Agent({
+          headersTimeout: 7200000, // 2 hours - allows very long video processing
+          bodyTimeout: 7200000,    // 2 hours
+          keepAliveTimeout: 7200000,
+        })
+        console.log('[Analyze Video] ✅ Extended fetch timeout configured (2 hours)')
+      } catch (agentError) {
+        console.log('[Analyze Video] ⚠️ Could not configure extended fetch timeout, using defaults')
+      }
+      
+      response = await fetch(`${UNIFIED_API_URL}/api/analyze-all`, fetchOptions)
       clearTimeout(timeoutId)
     } catch (fetchError) {
       clearTimeout(timeoutId)

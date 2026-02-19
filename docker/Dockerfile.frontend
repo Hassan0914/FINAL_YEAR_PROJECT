@@ -1,0 +1,46 @@
+# Frontend Dockerfile (Next.js) - Uses pre-built output from local build
+# This approach copies the already-built .next folder into the image,
+# avoiding slow npm ci / npm run build inside Docker.
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED 1
+
+RUN apk add --no-cache libc6-compat
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copy the standalone server (includes node_modules it needs)
+COPY .next/standalone ./
+
+# Copy static assets
+COPY .next/static ./.next/static
+
+# Copy public folder
+COPY public ./public
+
+# Copy Prisma files for migrations
+COPY prisma ./prisma
+COPY node_modules/.prisma ./node_modules/.prisma
+COPY node_modules/@prisma ./node_modules/@prisma
+COPY node_modules/prisma ./node_modules/prisma
+
+# Create startup script to run migrations before starting
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'echo "Running database migrations..."' >> /app/start.sh && \
+    echo 'npx prisma migrate deploy || true' >> /app/start.sh && \
+    echo 'echo "Starting Next.js server..."' >> /app/start.sh && \
+    echo 'node server.js' >> /app/start.sh && \
+    chmod +x /app/start.sh
+
+USER nextjs
+
+EXPOSE 3000
+
+ENV PORT 3000
+ENV HOSTNAME "0.0.0.0"
+
+CMD ["/app/start.sh"]

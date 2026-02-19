@@ -9,6 +9,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Enable standalone output for Docker
+  output: 'standalone',
   // API Routes configuration for large video uploads
   experimental: {
     serverActions: {
